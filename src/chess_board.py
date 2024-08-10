@@ -515,6 +515,8 @@ class board():
         return next_positions
     
     def move_piece(self,initial_position,final_position,promoted_piece="queen"):
+        if promoted_piece==None:
+            promoted_piece="q"
         promoted_piece=promoted_piece[:1].lower()
         if promoted_piece=="k":
             promoted_piece="n"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import pickle
+import compress_pickle as pickle
 import os
 import collections
 import numpy as np
@@ -138,7 +138,7 @@ def UCT_search(game_state, num_reads,net):
     for i in range(num_reads):
         leaf = root.select_leaf()
         encoded_s = ed.encode_board(leaf.game); encoded_s = encoded_s.transpose(2,0,1)
-        encoded_s = torch.from_numpy(encoded_s).float().cuda()
+        encoded_s = torch.from_numpy(encoded_s).float() #.cuda()
         child_priors, value_estimate = net(encoded_s)
         child_priors = child_priors.detach().cpu().numpy().reshape(-1); value_estimate = value_estimate.item()
         if leaf.game.check_status() == True and leaf.game.in_check_possible_moves() == []: # if checkmate
@@ -174,7 +174,7 @@ def get_policy(root):
     return policy
 
 def save_as_pickle(filename, data):
-    completeName = os.path.join("./datasets/iter2/",\
+    completeName = os.path.join("/home/owensr/chess/data/",\
                                 filename)
     with open(completeName, 'wb') as output:
         pickle.dump(data, output)
@@ -203,7 +203,7 @@ def MCTS_self_play(chessnet,num_games,cpu):
                 break
             states.append(copy.deepcopy(current_board.current_board))
             board_state = copy.deepcopy(ed.encode_board(current_board))
-            best_move, root = UCT_search(current_board,777,chessnet)
+            best_move, root = UCT_search(current_board,5,chessnet)
             current_board = do_decode_n_move_pieces(current_board,best_move) # decode move and move piece(s)
             policy = get_policy(root)
             dataset.append([board_state,policy])
@@ -223,7 +223,7 @@ def MCTS_self_play(chessnet,num_games,cpu):
             else:
                 dataset_p.append([s,p,value])
         del dataset
-        save_as_pickle("dataset_cpu%i_%i_%s" % (cpu,idxx, datetime.datetime.today().strftime("%Y-%m-%d")),dataset_p)
+        save_as_pickle("dataset_cpu%i_%i_%s.gz" % (cpu,idxx, datetime.datetime.today().strftime("%Y-%m-%d")),dataset_p)
 
 
     
@@ -241,13 +241,13 @@ if __name__=="__main__":
     #torch.save({'state_dict': net.state_dict()}, os.path.join("./model_data/",\
     #                                "current_net.pth.tar"))
     
-    current_net_filename = os.path.join("./model_data/",\
-                                    net_to_play)
-    checkpoint = torch.load(current_net_filename)
-    net.load_state_dict(checkpoint['state_dict'])
+    #current_net_filename = os.path.join("./model_data/",\
+    #                                net_to_play)
+    #checkpoint = torch.load(current_net_filename)
+    #net.load_state_dict(checkpoint['state_dict'])
     processes = []
-    for i in range(6):
-        p = mp.Process(target=MCTS_self_play,args=(net,50,i))
+    for i in range(1):
+        p = mp.Process(target=MCTS_self_play,args=(net,1,i))
         p.start()
         processes.append(p)
     for p in processes:
