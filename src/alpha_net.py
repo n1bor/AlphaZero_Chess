@@ -48,7 +48,11 @@ class board_data_all(IterableDataset):
                     self.files.remove(file)
                     print(f"new file {file}")
                     with open(file, 'rb') as fo:
-                        data=pickle.load(fo)
+                        try:
+                            data=pickle.load(fo)
+                        except EOFError:
+                            print(f"EOFError in file {file}")
+                            data=[]
                     data = np.array(data,dtype="object")
                     new_file_data=board_data(data)
 
