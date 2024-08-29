@@ -1,3 +1,5 @@
 class Player:
-    def getMove(board):
+    def getMove(self,moves):
+        pass
+    def getBoard(self,moves):
         pass

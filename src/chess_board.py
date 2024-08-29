@@ -464,9 +464,12 @@ class board():
             if 0<=a<=7 and 0<=b<=7:
                 if self.current_board[a,b] in [" ","Q","B","N","P","R"] and (a,b) not in c_list:
                     next_positions.append((a,b))
-        if self.castle("queenside") == True and self.check_status() == False:
+        #can't move through check
+        if self.castle("queenside") == True and self.check_status() == False and (0,1) not in c_list \
+                and (0,2) not in c_list and (0,3) not in c_list:
             next_positions.append((0,2))
-        if self.castle("kingside") == True and self.check_status() == False:
+        if self.castle("kingside") == True and self.check_status() == False and (0,4) not in c_list \
+                and (0,5) not in c_list:
             next_positions.append((0,6))
         return next_positions
     
@@ -508,9 +511,12 @@ class board():
             if 0<=a<=7 and 0<=b<=7:
                 if self.current_board[a,b] in [" ","q","b","n","p","r"] and (a,b) not in c_list:
                     next_positions.append((a,b))
-        if self.castle("queenside") == True and self.check_status() == False:
+        #can't move through check
+        if self.castle("queenside") == True and self.check_status() == False and (7,1) not in c_list \
+                and (7,2) not in c_list and (7,3) not in c_list:
             next_positions.append((7,2))
-        if self.castle("kingside") == True and self.check_status() == False:
+        if self.castle("kingside") == True and self.check_status() == False and (7,4) not in c_list \
+                and (7,5) not in c_list:
             next_positions.append((7,6))
         return next_positions
     
@@ -580,14 +586,15 @@ class board():
     def castle(self,side,inplace=False):
         if self.player == 0 and self.K_move_count == 0:
             if side == "queenside" and self.R1_move_count == 0 and self.current_board[7,1] == " " and self.current_board[7,2] == " "\
-                and self.current_board[7,3] == " ":
+                and self.current_board[7,3] == " " and self.current_board[7,0] == "R":
                 if inplace == True:
                     self.current_board[7,0] = " "; self.current_board[7,3] = "R"
                     self.current_board[7,4] = " "; self.current_board[7,2] = "K"
                     self.K_move_count += 1
                     self.player = 1
                 return True
-            elif side == "kingside" and self.R2_move_count == 0 and self.current_board[7,5] == " " and self.current_board[7,6] == " ":
+            elif side == "kingside" and self.R2_move_count == 0 and self.current_board[7,5] == " " and self.current_board[7,6] == " "\
+                and self.current_board[7,7] == "R":
                 if inplace == True:
                     self.current_board[7,7] = " "; self.current_board[7,5] = "R"
                     self.current_board[7,4] = " "; self.current_board[7,6] = "K"
@@ -596,14 +603,15 @@ class board():
                 return True
         if self.player == 1 and self.k_move_count == 0:
             if side == "queenside" and self.r1_move_count == 0 and self.current_board[0,1] == " " and self.current_board[0,2] == " "\
-                and self.current_board[0,3] == " ":
+                and self.current_board[0,3] == " " and self.current_board[0,3] == "r":
                 if inplace == True:
                     self.current_board[0,0] = " "; self.current_board[0,3] = "r"
                     self.current_board[0,4] = " "; self.current_board[0,2] = "k"
                     self.k_move_count += 1
                     self.player = 0
                 return True
-            elif side == "kingside" and self.r2_move_count == 0 and self.current_board[0,5] == " " and self.current_board[0,6] == " ":
+            elif side == "kingside" and self.r2_move_count == 0 and self.current_board[0,5] == " " and self.current_board[0,6] == " "\
+                and self.current_board[0,7] == "r":
                 if inplace == True:
                     self.current_board[0,7] = " "; self.current_board[0,5] = "r"
                     self.current_board[0,4] = " "; self.current_board[0,6] = "k"
@@ -620,12 +628,29 @@ class board():
             i, j = king_position
             if (i,j) in c_list:
                 return True
+            
+            #possible moves does not include king so need to check that!
+            other_king_position = np.where(self.current_board=="k")
+            oi,oj=other_king_position
+            for a,b in [(i+1,j),(i-1,j),(i,j+1),(i,j-1),(i+1,j+1),(i-1,j-1),(i+1,j-1),(i-1,j+1)]:
+                if 0<=a<=7 and 0<=b<=7:
+                    if a==oi and b==oj:
+                        return True
         elif self.player == 1:
             c_list,_ = self.possible_W_moves(threats=True)
+            
             king_position = np.where(self.current_board=="k")
             i, j = king_position
             if (i,j) in c_list:
                 return True
+            
+            #possible moves does not include king so need to check that!
+            other_king_position = np.where(self.current_board=="K")
+            oi,oj=other_king_position
+            for a,b in [(i+1,j),(i-1,j),(i,j+1),(i,j-1),(i+1,j+1),(i-1,j-1),(i+1,j-1),(i-1,j+1)]:
+                if 0<=a<=7 and 0<=b<=7:
+                    if a==oi and b==oj:
+                        return True
         return False
     
     def in_check_possible_moves(self):

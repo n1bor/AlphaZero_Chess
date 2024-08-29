@@ -1,10 +1,20 @@
 from Stockfish import Stockfish
 from match import match
+from multiprocessing.pool import ThreadPool
+from dataclasses import dataclass
+from Player import Player
+from AlphaZero_player import AlphaZero
 import random
+import pexpect
 class Entry():
     def __init__(self,player):
         self.player=player
         self.elo=1000
+        self.win=0
+        self.draw=0
+        self.lose=0
+    def __str__(self) -> str:
+        return f"{self.player} : {self.elo} {self.win}/{self.draw}/{self.lose}"
 
 def eloAB(ra,rb,result):
     qa=10**(ra/400)
@@ -19,47 +29,59 @@ def eloAB(ra,rb,result):
     bElo=rb+32*(sb-eb)
     return aElo,bElo
 
-if __name__=="__xmain__":
-
-    print(f"{eloAB(1000,1000,1)}")
-    print(f"{eloAB(1000,1000,0)}")
-    print(f"{eloAB(1000,1000,-1)}")
-
-    print(f"{eloAB(1100,900,1)}")
-    print(f"{eloAB(1100,900,0)}")
-    print(f"{eloAB(1100,900,-1)}")
-
-
+@dataclass
+class MatchDetails:
+    thread: object
+    a: Player
+    b: Player
 
 if __name__=="__main__":
     players=[]
-    
-    players.append(Entry(Stockfish(100,1)))
-    players.append(Entry(Stockfish(100,2)))
-    players.append(Entry(Stockfish(100,4)))
-    players.append(Entry(Stockfish(100,8)))
-    players.append(Entry(Stockfish(100,10)))
-    players.append(Entry(Stockfish(100,12)))
-    players.append(Entry(Stockfish(100,15)))
 
-    players.append(Entry(Stockfish(1,8)))
-    players.append(Entry(Stockfish(10,8)))
-    players.append(Entry(Stockfish(200,8)))
-    players.append(Entry(Stockfish(400,8)))
-    players.append(Entry(Stockfish(800,8)))
-
+    players.append(Entry(Stockfish(100,1,elo=1320)))
+    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/trained_net_2024-08-10-224417.gz',2)))
+    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/trained_net_2024-08-10-224417.gz',4)))
+    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/trained_net_2024-08-10-224417.gz',777)))
+    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/random.gz',4)))
+    players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/random.gz',2)))
+                
+    pool = ThreadPool(processes=1)
     for i in range(10000):
         print(f" MATCH {i}")
-        playera=random.choice(players)
-        playerb=random.choice(players)
-        if playera !=playerb and abs(playera.elo-playerb.elo)<400:
-            result=match(playera.player,playerb.player)
-            (aElo,bElo)=eloAB(playera.elo,playerb.elo,result)
-            playera.elo=aElo
-            playerb.elo=bElo
-    
+        matches=[]
+        playera=None
+        for player in sorted(players,key=lambda x: x.elo+random.randint(0,200),reverse=True):
+            if playera==None:
+                playera=player
+            else:
+                if random.choice([True, False]): # switch black white randomly.
+                    x=pool.apply_async(match,(playera.player,player.player))
+                    matches.append(MatchDetails(x,playera,player))
+                else:
+                    x=pool.apply_async(match,(player.player,playera.player))
+                    matches.append(MatchDetails(x,player,playera))
+                playera=None
+        for matchEntry in matches:
+            try:
+                result=matchEntry.thread.get()
+                (aElo,bElo)=eloAB(matchEntry.a.elo,matchEntry.b.elo,result)
+                matchEntry.a.elo=aElo
+                matchEntry.b.elo=bElo
+                if result==0:
+                    matchEntry.a.draw +=1
+                    matchEntry.b.draw +=1
+                if result==1:
+                    matchEntry.a.win +=1
+                    matchEntry.b.lose +=1
+                if result==-1:
+                    matchEntry.a.lose +=1
+                    matchEntry.b.win +=1
+            except pexpect.exceptions.TIMEOUT as e:
+                print(e)
+                pass
+
         for player in sorted(players,key=lambda x: x.elo,reverse=True):
-            print(f"{player.player.hash} {player.player.depth} {player.elo}")
+            print(f"{player}")
 
 
             

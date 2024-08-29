@@ -3,15 +3,9 @@ import sys
 from dataclasses import dataclass
 from Stockfish import Stockfish
 from Player import Player
+from AlphaZero_player import AlphaZero
 
 
-
-class AlphaZero(Player):
-    def __init__(self,parameterFile,steps):
-        self.parameterFile=parameterFile
-        self.steps=steps
-    def getMove(board):
-        pass
 
 def match(a,b):
     moves=[]
@@ -20,9 +14,12 @@ def match(a,b):
     result=0
     while not checkmate:
         move=a.getMove(moves)
-        print(f"PlayerA {move} {len(moves)}")
+        #print(f"PlayerA {move} {len(moves)}")
+        if move=="onlykings":
+            print(f"draw - only kings {' '.join(moves)}")
+            break
         if move==None:
-            print(f"Player B won {' '.join(moves)}")
+            print(f"Player B {b} won {' '.join(moves)}")
             checkmate=True
             result=-1
             break
@@ -31,11 +28,13 @@ def match(a,b):
             break
         lastmove=move
         moves.append(move)
-        
         move=b.getMove(moves)
-        print(f"PlayerB {move} {len(moves)}")
+        if move=="onlykings":
+            print("draw - only kings {moves}")
+            break
+        #print(f"PlayerB {move} {len(moves)}")
         if move==None:
-            print(f"Player A won {' '.join(moves)}")
+            print(f"Player A {a} won {' '.join(moves)}")
             result=1
             checkmate=True
             break
@@ -46,11 +45,17 @@ def match(a,b):
         lastmove=move
 
         moves.append(move)
-        if len(moves)>500:
-            print("draw")
+        if len(moves)>250:
+            print(f"draw 250 {' '.join(moves)}")
             break
      
-    #print(f"{a.depth} {b.depth}")   
+    aBoard=a.getBoard(moves) 
+    bBoard=b.getBoard(moves)
+    for index, item_list in enumerate(aBoard):
+        if item_list != bBoard[index]:
+            print(f"{aBoard} != {bBoard} for {' '.join(moves)}")
+            raise Exception(f"{aBoard} != {bBoard} for {' '.join(moves)}")
+
     return result
 
 
