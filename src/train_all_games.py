@@ -25,7 +25,7 @@ if __name__=="__main__":
     net_to_train="start_net.gz"; 
     
     # gather data
-    data_path = "/home/owensr/chess/data/games"
+    data_path = "/home/owensr/chess/data/train"
             
     mp.set_start_method("spawn",force=True)
     net = ChessNet()

@@ -5,7 +5,7 @@ import pexpect
 import re 
 import numpy as np
 import sys
-sys.path.insert(0, '../AlphaZero_Chess/src')
+#sys.path.insert(0, '../AlphaZero_Chess/src')
 from chess_board import board as c_board
 import encoder_decoder as ed
 if len(sys.argv)==1:

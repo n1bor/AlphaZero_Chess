@@ -43,7 +43,7 @@ class board_data_all(IterableDataset):
         while len(self.files)>0 or len(self.loaders)>0:
             data_item=None
             while data_item==None and not (len(self.files)==0 and len(self.loaders)==0):
-                if len(self.loaders)<50 and len(self.files)>0:
+                if len(self.loaders)<5 and len(self.files)>0:
                     file=random.choice(self.files)
                     self.files.remove(file)
                     print(f"new file {file}")
