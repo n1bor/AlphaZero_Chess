@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 import datetime
+from config import rootDir
 
 if __name__=="__main__":
 
@@ -25,7 +26,7 @@ if __name__=="__main__":
     net_to_train="start_net.gz"; 
     
     # gather data
-    data_path = "/home/owensr/chess/data/train"
+    data_path = rootDir+"/data/train"
             
     mp.set_start_method("spawn",force=True)
     net = ChessNet()
@@ -36,7 +37,7 @@ if __name__=="__main__":
     net.share_memory()
     net.train()
     print("hi")
-    current_net_filename = os.path.join("/home/owensr/chess/data/model_data/",\
+    current_net_filename = os.path.join(rootDir+"/data/model_data/",\
                                     net_to_train)
     checkpoint = torch.load(current_net_filename, weights_only=True)
     net.load_state_dict(checkpoint['state_dict'])
@@ -53,5 +54,5 @@ if __name__=="__main__":
 
     # save results
     save_as="trained_net_%s.gz" % datetime.datetime.today().strftime("%Y-%m-%d-%H%M%S")
-    torch.save({'state_dict': net.state_dict()}, os.path.join("/home/owensr/chess/data/model_data/",\
+    torch.save({'state_dict': net.state_dict()}, os.path.join(rootDir+"/data/model_data/",\
                                     save_as))

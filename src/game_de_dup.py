@@ -6,12 +6,15 @@ import hashlib
 import dbm
 import random
 # gather data
-data_path_in = "/home/owensr/chess/data/games"
-data_path_train = "/home/owensr/chess/data/train"
-data_path_test = "/home/owensr/chess/data/test"
-data_path_validate = "/home/owensr/chess/data/validate"
 
-data_path_db = "/home/owensr/chess/data/db.dbm"
+from config import rootDir
+
+data_path_in = rootDir+"/data/games"
+data_path_train = rootDir+"/data/train"
+data_path_test = rootDir+"/data/test"
+data_path_validate = rootDir+"/data/validate"
+
+data_path_db = rootDir+"/data/db.dbm"
 duplicate=0
 positions=0
 file_count={}

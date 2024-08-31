@@ -13,6 +13,8 @@ import numpy as np
 import os
 import datetime
 
+from config import rootDir
+
 class board_data(Dataset):
     def __init__(self, dataset): # dataset = np.array of (s, p, v)
         self.X = dataset[:,0]
@@ -210,5 +212,5 @@ def train(net, data_directory, epoch_start=0, epoch_stop=20, cpu=0):
     ax.set_ylabel("Loss per batch")
     ax.set_title("Loss vs Epoch")
     print('Finished Training')
-    plt.savefig(os.path.join("/home/owensr/chess/data/", "Loss_vs_Epoch_%s.png" % datetime.datetime.today().strftime("%Y-%m-%d-%H%M%S")))
+    plt.savefig(os.path.join(rootDir+"/data/", "Loss_vs_Epoch_%s.png" % datetime.datetime.today().strftime("%Y-%m-%d-%H%M%S")))
 

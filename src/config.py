@@ -1,0 +1,1 @@
+rootDir='/home/owensr/chess'
