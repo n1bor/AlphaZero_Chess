@@ -5,15 +5,22 @@ import pexpect
 import re 
 import numpy as np
 import sys
+import time
 #sys.path.insert(0, '../AlphaZero_Chess/src')
 from chess_board import board as c_board
 import encoder_decoder as ed
-if len(sys.argv)==1:
-    runId=1
-else:
-    runId=sys.argv[1]
-print(f"RunID {runId}")
 
+import config
+
+if len(sys.argv) < 2:
+    print("need to pass run id and runtime")
+    quit()
+
+
+runId=sys.argv[1]
+runtime=int(sys.argv[2])
+print(f"RunID {runId} runtime (seconds) {runtime}")
+startTime=time.time()
 
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
@@ -48,7 +55,7 @@ def do_decode_n_move_pieces(board,i,f,p):
             board.move_piece((0,0),(0,3),None)
     return board
 
-code="/home/owensr/chess/stockfish/stockfish-ubuntu-x86-64-avx2"
+code=config.rootDir+"/stockfish/stockfish-ubuntu-x86-64-avx2"
 
 child=pexpect.spawn(code)
 child.expect('Stockfish')
@@ -57,17 +64,21 @@ child.sendline("setoption name Hash value 256")
 child.sendline("setoption name UCI_ShowWDL value true")
 child.sendline("setoption name SyzygyPath value setoption name SyzygyPath value")
 
-
-
-
 child.sendline("uci")
 child.expect("uciok")
+
+dataset_p = []
+
 for gameId in range(10000):
-    print(f"RunId {runId} game {gameId}")
+    if time.time()>startTime+runtime:
+        print("exceeded runtime - exiting")
+        break
+
+    print(f"RunId {runId} game {gameId} remaining time {startTime+runtime-time.time()}")
     current_board = c_board()
     moveNumber=0
     moves=""
-    dataset_p = []
+    
     continueGame=True
     while continueGame:
         board_state = copy.deepcopy(ed.encode_board(current_board))
@@ -113,7 +124,7 @@ for gameId in range(10000):
         bestmove=b.group(1)
         
         if bestmove=="(none)":
-            print(f"checkmate moves:{len(moveList)}")
+            print(f"checkmate moves:{moveNumber}")
             break
 
         max=softmax(scoreList)
@@ -148,9 +159,9 @@ for gameId in range(10000):
         moves=moves+" "+newmove[0]
         moveNumber+=1
         if moveNumber>500 or (bestDraw>997 and moveNumber>100):
-            print(f"draw moves:{len(moveList)}")
+            print(f"draw moves:{moveNumber}")
             break
 
-
-    with open(f"/home/owensr/chess/data/games/data_{runId}_{gameId}.gz", 'wb') as output:
-            dump(dataset_p, output)
+print("saving games")
+with open(f"{config.rootDir}/data/games/data_{runId}.gz", 'wb') as output:
+         dump(dataset_p, output)
