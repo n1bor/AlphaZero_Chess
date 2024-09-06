@@ -35,32 +35,36 @@ class board_data_all(IterableDataset):
         for idx,file in enumerate(os.listdir(directory)):
             filename = os.path.join(directory,file)
             self.files.append(filename)
-        self.loader=None
-    def generate(self):
-        random.shuffle(self.files)
-        for file in self.files:
-            if time.time()> self.starttime+self.runtime:
-                break
-            print(f"new file {file}")
-            with open(file, 'rb') as fo:
-                try:
-                    data=pickle.load(fo)
-                except EOFError:
-                    print(f"EOFError in file {file}")
-                    data=[]
-            data = np.array(data,dtype="object")
-            file_data=board_data(data)
+        self.loaders=[]
 
-            loader=iter(DataLoader(file_data, shuffle=True, pin_memory=False))
-            while loader !=None and time.time()< self.starttime+self.runtime:
-                #print(f"time left: {time.time()-self.starttime-self.runtime}")
+    def generate(self):
+        print(f'{time.time()< self.starttime+self.runtime}')
+        while (len(self.files)>0 or len(self.loaders)>0) and (time.time()< self.starttime+self.runtime):
+            data_item=None
+            while data_item==None and not (len(self.files)==0 and len(self.loaders)==0) and (time.time()< self.starttime+self.runtime):
+                if len(self.loaders)<50 and len(self.files)>0:
+                    file=random.choice(self.files)
+                    self.files.remove(file)
+                    print(f"new file {file}")
+                    with open(file, 'rb') as fo:
+                        try:
+                            data=pickle.load(fo)
+                        except EOFError:
+                            print(f"EOFError in file {file}")
+                            data=[]
+                    data = np.array(data,dtype="object")
+                    new_file_data=board_data(data)
+
+                    newLoader=DataLoader(new_file_data,  shuffle=True, pin_memory=True)
+                    self.loaders.append(iter(newLoader))
+                loader=random.choice(self.loaders)
                 data_item=next(loader,None)
                 if data_item==None:
-                    loader=None
-                else:
-                    yield (torch.squeeze(data_item[0]),
-                            torch.squeeze(data_item[1]),
-                            torch.squeeze(data_item[2]))
+                    self.loaders.remove(loader)
+            if data_item!=None:
+                yield (torch.squeeze(data_item[0]),
+                        torch.squeeze(data_item[1]),
+                        torch.squeeze(data_item[2]))
 
     def __iter__(self):
         return iter(self.generate())
@@ -82,7 +86,6 @@ def train(net,train_path,lr,batch_size,cpu,run):
     losses_99=[]
     losses_9=[]
     for i,data in enumerate(train_loader,0):
-        #print(f"batch {i}")
         state, policy, value = data
         if cuda:
             state, policy, value = state.cuda().float(), policy.float().cuda(), value.cuda().float()
@@ -97,7 +100,7 @@ def train(net,train_path,lr,batch_size,cpu,run):
         total_loss += loss.item()
         roll_99=roll_99*0.99+loss.item()*0.01
         roll_9=roll_9*0.9+loss.item()*0.1
-        print(f"{loss.item()} {roll_9} {roll_99}")
+        print(f"b:{i} l:{loss.item()} l9:{roll_9} l99:{roll_99}")
         losses_per_batch.append(loss.item())
         losses_99.append(roll_99)
         losses_9.append(roll_9)
@@ -123,10 +126,7 @@ if __name__=="__main__":
     train_path = rootDir+"/data/"+trainDir
     
     net = ChessNet()
-    cuda = torch.cuda.is_available()
-    if cuda:
-        net.cuda()
-    net.share_memory()
+    
     #net.eval()
     # Runs Net training
     net_to_train=f"latest.gz"; 
@@ -137,8 +137,12 @@ if __name__=="__main__":
     current_net_filename = os.path.join(rootDir+"/data/model_data/",\
                                     net_to_train)
     checkpoint = torch.load(current_net_filename, weights_only=True)
-    net.load_state_dict(checkpoint['state_dict'])
+    remove_prefix = '_orig_mod.'
+    state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in checkpoint['state_dict'].items()}
 
+    net.load_state_dict(state_dict)
+    net=torch.compile(net)
+    print("x")
     loss_99=train(net,train_path,lr,batch_size,0,run)
     #train(net,test_path,testCount,lr,1,batch_size,0,'test')
         #processes2 = []

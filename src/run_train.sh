@@ -3,7 +3,7 @@ root=/home/owensr/chess
 cd $root/data
 
 trainingSets=0
-runTimeSecondsNew=3300
+runTimeSecondsNew=3000
 runTimeSecondsOld=1800
 run=1
 while true

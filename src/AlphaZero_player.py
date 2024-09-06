@@ -11,9 +11,11 @@ class AlphaZero(Player):
         self.steps=steps
         #self.current_board=None
         checkpoint = torch.load(self.parameterFile,weights_only=True)
-                
+        remove_prefix = '_orig_mod.'
+        state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in checkpoint['state_dict'].items()}
+
         self.net = ChessNet()
-        self.net.load_state_dict(checkpoint['state_dict'])
+        self.net.load_state_dict(state_dict)
         cuda = torch.cuda.is_available()
         if cuda:
             self.net.cuda()
