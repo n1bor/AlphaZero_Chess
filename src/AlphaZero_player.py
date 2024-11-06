@@ -10,7 +10,7 @@ class AlphaZero(Player):
         self.parameterFile=parameterFile
         self.steps=steps
         #self.current_board=None
-        checkpoint = torch.load(self.parameterFile,weights_only=True)
+        checkpoint = torch.load(self.parameterFile,weights_only=True, map_location=torch.device('cpu') )
         remove_prefix = '_orig_mod.'
         state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in checkpoint['state_dict'].items()}
 
@@ -20,6 +20,7 @@ class AlphaZero(Player):
         if cuda:
             self.net.cuda()
         print(f"{self}")
+        self.net.eval()
     #def newGame(self):
     #    self.current_board = c_board()
     

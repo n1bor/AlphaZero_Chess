@@ -69,7 +69,7 @@ child.expect("uciok")
 
 dataset_p = []
 
-for gameId in range(10000):
+for gameId in range(1):
     if time.time()>startTime+runtime:
         print("exceeded runtime - exiting")
         break
@@ -129,7 +129,7 @@ for gameId in range(10000):
 
         max=softmax(scoreList)
         newmove=np.random.choice(moveList,1,True,max)
-        #print(f"N:{newmove} B:{bestmove} {moveNumber}")
+        print(f"N:{newmove} B:{bestmove} {moveNumber}")
 
         policy=np.zeros(4672)
         for (move,odds) in zip(moveList,max):

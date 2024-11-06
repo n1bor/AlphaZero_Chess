@@ -55,7 +55,7 @@ class board_data_all(IterableDataset):
                     data = np.array(data,dtype="object")
                     new_file_data=board_data(data)
 
-                    newLoader=DataLoader(new_file_data,  shuffle=True, pin_memory=True)
+                    newLoader=DataLoader(new_file_data,  shuffle=False, pin_memory=True)
                     self.loaders.append(iter(newLoader))
                 loader=random.choice(self.loaders)
                 data_item=next(loader,None)
@@ -136,12 +136,12 @@ if __name__=="__main__":
     net.share_memory()
     current_net_filename = os.path.join(rootDir+"/data/model_data/",\
                                     net_to_train)
-    checkpoint = torch.load(current_net_filename, weights_only=True)
+    checkpoint = torch.load(current_net_filename, weights_only=True, map_location=torch.device('cpu') )
     remove_prefix = '_orig_mod.'
     state_dict = {k[len(remove_prefix):] if k.startswith(remove_prefix) else k: v for k, v in checkpoint['state_dict'].items()}
 
     net.load_state_dict(state_dict)
-    net=torch.compile(net)
+    #net=torch.compile(net)
     print("x")
     loss_99=train(net,train_path,lr,batch_size,0,run)
     #train(net,test_path,testCount,lr,1,batch_size,0,'test')
