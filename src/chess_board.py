@@ -713,12 +713,21 @@ class board():
                         else:
                             acts.append([initial_pos,final_pos,None])
             actss = []
+            saved_board = self.current_board.copy()
+            saved_move_count = self.move_count
+            saved_en_passant = self.en_passant; saved_en_passant_move = self.en_passant_move
+            saved_R1 = self.R1_move_count; saved_R2 = self.R2_move_count; saved_K = self.K_move_count
             for act in acts:  ## after move, check that its not check ownself, else illegal move
-                i,f,p = act; b = copy.deepcopy(self)
-                b.move_piece(i,f,p)
-                b.player = 0
-                if b.check_status() == False:
+                i,f,p = act
+                self.move_piece(i,f,p)
+                self.player = 0
+                if self.check_status() == False:
                     actss.append(act)
+                self.current_board = saved_board.copy()
+                self.move_count = saved_move_count
+                self.en_passant = saved_en_passant; self.en_passant_move = saved_en_passant_move
+                self.R1_move_count = saved_R1; self.R2_move_count = saved_R2; self.K_move_count = saved_K
+                self.player = 0
             return actss
         if self.player == 1:
             _,c_dict = self.possible_B_moves() # all non-king moves except castling
@@ -734,11 +743,20 @@ class board():
                         else:
                             acts.append([initial_pos,final_pos,None])
             actss = []
+            saved_board = self.current_board.copy()
+            saved_move_count = self.move_count
+            saved_en_passant = self.en_passant; saved_en_passant_move = self.en_passant_move
+            saved_r1 = self.r1_move_count; saved_r2 = self.r2_move_count; saved_k = self.k_move_count
             for act in acts:  ## after move, check that its not check ownself, else illegal move
-                i,f,p = act; b = copy.deepcopy(self)
-                b.move_piece(i,f,p)
-                b.player = 1
-                if b.check_status() == False:
+                i,f,p = act
+                self.move_piece(i,f,p)
+                self.player = 1
+                if self.check_status() == False:
                     actss.append(act)
+                self.current_board = saved_board.copy()
+                self.move_count = saved_move_count
+                self.en_passant = saved_en_passant; self.en_passant_move = saved_en_passant_move
+                self.r1_move_count = saved_r1; self.r2_move_count = saved_r2; self.k_move_count = saved_k
+                self.player = 1
             return actss
         
