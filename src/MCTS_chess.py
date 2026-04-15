@@ -12,6 +12,33 @@ import torch.multiprocessing as mp
 from alpha_net import ChessNet
 import datetime
 
+# LRU cache for legal-move indices, persisted across moves so transpositions
+# and repeated opening positions stay hot.  Key covers every piece of state
+# that affects legality: position, side to move, en passant column, and the
+# six castling move-counts.
+_ACTIONS_CACHE_MAXSIZE = 50_000
+_actions_cache: collections.OrderedDict = collections.OrderedDict()
+
+
+def _cached_action_idxs(game) -> list:
+    key = (game.current_board.tobytes(), game.player,
+           game.en_passant,
+           game.r1_move_count, game.r2_move_count, game.k_move_count,
+           game.R1_move_count, game.R2_move_count, game.K_move_count)
+    if key in _actions_cache:
+        _actions_cache.move_to_end(key)
+        return _actions_cache[key]
+    idxs = []
+    for action in game.actions():
+        if action != []:
+            initial_pos, final_pos, underpromote = action
+            idxs.append(ed.encode_action(game, initial_pos, final_pos, underpromote))
+    _actions_cache[key] = idxs
+    if len(_actions_cache) > _ACTIONS_CACHE_MAXSIZE:
+        _actions_cache.popitem(last=False)
+    return idxs
+
+
 class UCTNode():
     def __init__(self, game, move, parent=None, c_puct=1):
         self.game = game # state s
@@ -71,11 +98,7 @@ class UCTNode():
     
     def expand(self, child_priors):
         self.is_expanded = True
-        action_idxs = []; c_p = child_priors
-        for action in self.game.actions(): # possible actions
-            if action != []:
-                initial_pos,final_pos,underpromote = action
-                action_idxs.append(ed.encode_action(self.game,initial_pos,final_pos,underpromote))
+        action_idxs = _cached_action_idxs(self.game)
         if action_idxs == []:
             self.is_expanded = False
         self.action_idxes = action_idxs
