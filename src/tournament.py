@@ -1,8 +1,13 @@
 import random
-import pexpect
 import multiprocessing
+import concurrent.futures
 from dataclasses import dataclass
 from typing import Optional
+
+
+# Number of matches to keep running in parallel at all times.
+# 12 is optimal for a 16-core CPU + RTX 4080 (see profiling notes).
+NUM_WORKERS = 12
 
 
 @dataclass
@@ -25,7 +30,7 @@ class PlayerSpec:
 
 
 def run_match(spec_a, spec_b):
-    """Worker entry point.  Builds both players in the worker process and plays a game."""
+    """Worker entry point. Builds both players in the worker process and plays a game."""
     from AlphaZero_player import AlphaZero
     from Stockfish import Stockfish
     from match import match
@@ -41,20 +46,26 @@ def run_match(spec_a, spec_b):
 class Entry:
     def __init__(self, spec: PlayerSpec):
         self.spec = spec
-        self.elo = 1000
+        self.elo = 1000.0
         self.win = 0
         self.draw = 0
         self.lose = 0
 
+    @property
+    def games_played(self):
+        return self.win + self.draw + self.lose
+
     def __str__(self):
-        return f"{self.spec} : {self.elo} {self.win}/{self.draw}/{self.lose}"
+        return (f"{str(self.spec):<58} "
+                f"elo:{self.elo:>7.1f}  "
+                f"W{self.win}/D{self.draw}/L{self.lose} "
+                f"({self.games_played}g)")
 
 
 @dataclass
 class MatchDetails:
-    thread: object
-    a: Entry
-    b: Entry
+    a: Entry   # corresponds to first argument of run_match (spec_a)
+    b: Entry   # corresponds to second argument of run_match (spec_b)
 
 
 def eloAB(ra, rb, result):
@@ -64,9 +75,40 @@ def eloAB(ra, rb, result):
     eb = qb / (qa + qb)
     sa = (result + 1) / 2
     sb = 1 - sa
-    aElo = ra + 32 * (sa - ea)
-    bElo = rb + 32 * (sb - eb)
-    return aElo, bElo
+    return ra + 32 * (sa - ea), rb + 32 * (sb - eb)
+
+
+def select_pairing(players):
+    """
+    Pick the player with the fewest completed games as player A.
+    Break ties randomly among equally under-played players.
+    Pick player B by ELO-weighted random selection from the rest.
+    """
+    fewest = min(e.games_played for e in players)
+    candidates = [e for e in players if e.games_played == fewest]
+    player_a = random.choice(candidates)
+    others = [p for p in players if p is not player_a]
+    player_b = max(others, key=lambda x: x.elo + random.randint(0, 200))
+    return player_a, player_b
+
+
+def _submit(executor, in_flight, players):
+    """Select a pairing and submit it to the executor, recording it in in_flight."""
+    a, b = select_pairing(players)
+    # Randomly assign sides so neither player always has white
+    if random.choice([True, False]):
+        f = executor.submit(run_match, a.spec, b.spec)
+        in_flight[f] = MatchDetails(a, b)
+    else:
+        f = executor.submit(run_match, b.spec, a.spec)
+        in_flight[f] = MatchDetails(b, a)  # b is spec_a, a is spec_b
+
+
+def _print_standings(players, match_count):
+    W = 80
+    print(f"\n  ── Standings after {match_count} matches {'─' * (W - 30)}")
+    for p in sorted(players, key=lambda x: -x.elo):
+        print(f"  {p}")
 
 
 if __name__ == '__main__':
@@ -79,42 +121,62 @@ if __name__ == '__main__':
     for depth in [5, 10]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
-    # spawn gives each worker its own GIL and CUDA context — required for true parallelism
     ctx = multiprocessing.get_context('spawn')
-    with ctx.Pool(processes=5) as pool:
-        for i in range(10000):
-            print(f" MATCH {i}")
-            matches = []
-            playera = None
-            for player in sorted(players, key=lambda x: x.elo + random.randint(0, 200), reverse=True):
-                if playera is None:
-                    playera = player
-                else:
-                    if random.choice([True, False]):
-                        x = pool.apply_async(run_match, (playera.spec, player.spec))
-                        matches.append(MatchDetails(x, playera, player))
-                    else:
-                        x = pool.apply_async(run_match, (player.spec, playera.spec))
-                        matches.append(MatchDetails(x, player, playera))
-                    playera = None
+    match_count = 0
+    in_flight: dict = {}   # future -> MatchDetails
 
-            for matchEntry in matches:
-                try:
-                    result = matchEntry.thread.get()
-                    (aElo, bElo) = eloAB(matchEntry.a.elo, matchEntry.b.elo, result)
-                    matchEntry.a.elo = aElo
-                    matchEntry.b.elo = bElo
-                    if result == 0:
-                        matchEntry.a.draw += 1
-                        matchEntry.b.draw += 1
+    print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
+
+    with concurrent.futures.ProcessPoolExecutor(
+            max_workers=NUM_WORKERS, mp_context=ctx) as executor:
+
+        # Fill the pool to NUM_WORKERS
+        for _ in range(NUM_WORKERS):
+            _submit(executor, in_flight, players)
+
+        try:
+            while True:
+                # Block until at least one match finishes
+                done, _ = concurrent.futures.wait(
+                    list(in_flight.keys()),
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+
+                for f in done:
+                    md = in_flight.pop(f)
+                    match_count += 1
+
+                    try:
+                        result = f.result()
+                    except Exception as e:
+                        print(f"  Match error ({md.a.spec} vs {md.b.spec}): {e}")
+                        # Re-submit a replacement without updating stats
+                        _submit(executor, in_flight, players)
+                        continue
+
+                    # Update ELO and win/draw/loss counts
+                    md.a.elo, md.b.elo = eloAB(md.a.elo, md.b.elo, result)
                     if result == 1:
-                        matchEntry.a.win += 1
-                        matchEntry.b.lose += 1
-                    if result == -1:
-                        matchEntry.a.lose += 1
-                        matchEntry.b.win += 1
-                except pexpect.exceptions.TIMEOUT as e:
-                    print(e)
+                        md.a.win += 1;  md.b.lose += 1
+                        outcome = f"{md.a.spec} beat {md.b.spec}"
+                    elif result == -1:
+                        md.a.lose += 1; md.b.win += 1
+                        outcome = f"{md.b.spec} beat {md.a.spec}"
+                    else:
+                        md.a.draw += 1; md.b.draw += 1
+                        outcome = f"{md.a.spec} drew {md.b.spec}"
 
-            for player in sorted(players, key=lambda x: x.elo, reverse=True):
-                print(f"{player}")
+                    print(f"\n  Match {match_count}: {outcome}")
+                    _print_standings(players, match_count)
+
+                    # Immediately submit a new match to keep the pool full
+                    _submit(executor, in_flight, players)
+
+        except KeyboardInterrupt:
+            print(f"\nInterrupted — {match_count} matches completed, "
+                  f"{len(in_flight)} in flight.")
+            print("Cancelling in-flight matches and shutting down...\n")
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    # Final standings printed after clean shutdown
+    _print_standings(players, match_count)
