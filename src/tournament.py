@@ -123,11 +123,17 @@ def select_pairing(players):
     candidates = [e for e in players if e.total_assigned == fewest]
     player_a = random.choice(candidates)
     others = sorted([p for p in players if p is not player_a], key=lambda x: x.elo)
-    idx = next((i for i, p in enumerate(others) if p.elo >= player_a.elo - 1e-9), len(others))
-    # neighbour above: others[idx], neighbour below: others[idx-1] (if they exist)
-    above = others[idx] if idx < len(others) else None
-    below = others[idx - 1] if idx > 0 else None
-    neighbours = [p for p in [above, below] if p is not None]
+    elo_a = player_a.elo
+    idx = next((i for i, p in enumerate(others) if p.elo >= elo_a - 1e-9), len(others))
+    above_elo = others[idx].elo if idx < len(others) else None
+    below_elo = others[idx - 1].elo if idx > 0 else None
+    # For each distinct neighbour ELO level, pick one player at random from that
+    # level — this avoids always selecting the same index-0 player when many
+    # players share the same ELO (e.g. at tournament start).
+    neighbours = []
+    for target in dict.fromkeys(e for e in [above_elo, below_elo] if e is not None):
+        pool = [p for p in others if abs(p.elo - target) < 1e-9]
+        neighbours.append(random.choice(pool))
     player_b = random.choice(neighbours)
     return player_a, player_b
 
