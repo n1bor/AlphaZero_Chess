@@ -79,9 +79,11 @@ class UCTNode():
         if action_idxs == []:
             self.is_expanded = False
         self.action_idxes = action_idxs
-        for i in range(len(child_priors)): # mask all illegal actions
-            if i not in action_idxs:
-                c_p[i] = 0.0000000000
+        # Zero all entries then restore only legal-move priors — O(legal_moves)
+        # instead of the previous O(4672 × legal_moves) Python loop.
+        c_p = np.zeros_like(child_priors)
+        if action_idxs:
+            c_p[action_idxs] = child_priors[action_idxs]
         if self.parent.parent == None: # add dirichlet noise to child_priors in root node
             c_p = self.add_dirichlet_noise(action_idxs,c_p)
         self.child_priors = c_p
