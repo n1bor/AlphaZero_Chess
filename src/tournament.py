@@ -11,7 +11,7 @@ from typing import Optional
 
 # Number of matches to keep running in parallel at all times.
 # 12 is optimal for a 16-core CPU + RTX 4080 (see profiling notes).
-NUM_WORKERS = 12
+NUM_WORKERS = 20
 
 # Maximum wall-clock seconds a single match may take before the worker is
 # considered hung.  At 2000 MCTS steps a game rarely exceeds 30 minutes;
@@ -115,13 +115,20 @@ def select_pairing(players):
     """
     Pick the player with the fewest total assigned games (completed + in-flight)
     as player A. Break ties randomly among equally under-played players.
-    Pick player B by ELO-weighted random selection from the rest.
+    Pick player B as either the next-higher or next-lower ELO neighbour of
+    player A (chosen at random).  This keeps matches competitive and prevents
+    high-ELO outliers from monopolising the opponent slot.
     """
     fewest = min(e.total_assigned for e in players)
     candidates = [e for e in players if e.total_assigned == fewest]
     player_a = random.choice(candidates)
-    others = [p for p in players if p is not player_a]
-    player_b = max(others, key=lambda x: x.elo + random.randint(0, 200))
+    others = sorted([p for p in players if p is not player_a], key=lambda x: x.elo)
+    idx = next((i for i, p in enumerate(others) if p.elo >= player_a.elo - 1e-9), len(others))
+    # neighbour above: others[idx], neighbour below: others[idx-1] (if they exist)
+    above = others[idx] if idx < len(others) else None
+    below = others[idx - 1] if idx > 0 else None
+    neighbours = [p for p in [above, below] if p is not None]
+    player_b = random.choice(neighbours)
     return player_a, player_b
 
 
@@ -222,16 +229,19 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
 
 
 if __name__ == '__main__':
-    NET    = '/workspace/chess/data/model_data/latest.gz'
-    AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
+    NET    = '/workspace/chess/data/model_data/model_1_loss2.22_2026-04-15-062956.gz'
+    # AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
+    AR_NET = '/workspace/chess/data/model_data/small_model_10hrs_2.12.gz'
     STEPS  = 200
 
     players = []
     for c in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]:
         players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=STEPS, c_puct=c)))
-    for c in [1, 1.5, 2, 2.5]:
+    for c in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]:
         players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=STEPS, c_puct=c)))
-    for depth in [5, 10]:
+    for c in [3]:
+        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=800 , c_puct=c)))
+    for depth in [1, 5, 10, 15]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     ctx = multiprocessing.get_context('spawn')
