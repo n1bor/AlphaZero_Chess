@@ -3,6 +3,7 @@ import multiprocessing
 import concurrent.futures
 import json
 import os
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -127,11 +128,12 @@ def _submit(executor, in_flight, players):
 STATE_FILE = '/workspace/chess/data/tournament_state.json'
 
 
-def _save_state(players, match_count):
+def _save_state(players, match_count, h2h):
     state = {
         'match_count': match_count,
         'players': {str(e.spec): {'elo': e.elo, 'win': e.win, 'draw': e.draw, 'lose': e.lose}
                     for e in players},
+        'h2h': {k: dict(v) for k, v in h2h.items()},
     }
     tmp = STATE_FILE + '.tmp'
     with open(tmp, 'w') as f:
@@ -139,7 +141,7 @@ def _save_state(players, match_count):
     os.replace(tmp, STATE_FILE)  # atomic on POSIX
 
 
-def _load_state(players):
+def _load_state(players, h2h):
     if not os.path.exists(STATE_FILE):
         return 0
     with open(STATE_FILE) as f:
@@ -152,17 +154,49 @@ def _load_state(players):
             e.win   = saved[key]['win']
             e.draw  = saved[key]['draw']
             e.lose  = saved[key]['lose']
+    for k, v in state.get('h2h', {}).items():
+        h2h[k].update(v)
     loaded = state.get('match_count', 0)
     if loaded:
         print(f"  Resumed from {STATE_FILE} — {loaded} matches already played.")
     return loaded
 
 
-def _print_standings(players, match_count):
+def _short(spec: PlayerSpec) -> str:
+    """Short label used in the head-to-head table."""
+    if spec.kind == 'alpha':
+        model = os.path.basename(spec.net_path)
+        return f"Az({model[:8]} c={spec.c_puct})"
+    return f"SF(d={spec.sf_depth})"
+
+
+def _print_standings(players, match_count, h2h):
+    ranked = sorted(players, key=lambda x: -x.elo)
     W = 80
     print(f"\n  ── Standings after {match_count} matches {'─' * (W - 30)}")
-    for p in sorted(players, key=lambda x: -x.elo):
+    for p in ranked:
         print(f"  {p}")
+
+    if not h2h:
+        return
+    labels = [_short(p.spec) for p in ranked]
+    col = max(len(l) for l in labels)
+    row = max(len(l) for l in labels)
+    # header
+    print(f"\n  Head-to-head  (row beat col  W/D/L)")
+    header = ' ' * (row + 4) + '  '.join(f"{l:>{col}}" for l in labels)
+    print(f"  {header}")
+    for pa, la in zip(ranked, labels):
+        cells = []
+        for pb, lb in zip(ranked, labels):
+            if pa is pb:
+                cells.append(' ' * col)
+                continue
+            key = f"{la}|{lb}"
+            rec = h2h.get(key, {})
+            w, d, l = rec.get('w', 0), rec.get('d', 0), rec.get('l', 0)
+            cells.append(f"{w}/{d}/{l}".rjust(col))
+        print(f"  {la:>{row}}    {'  '.join(cells)}")
 
 
 if __name__ == '__main__':
@@ -179,9 +213,10 @@ if __name__ == '__main__':
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     ctx = multiprocessing.get_context('spawn')
-    in_flight: dict = {}   # future -> MatchDetails
+    in_flight: dict = {}        # future -> MatchDetails
+    h2h: dict = defaultdict(dict)  # "labelA|labelB" -> {w, d, l}
 
-    match_count = _load_state(players)
+    match_count = _load_state(players, h2h)
     print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
 
     with concurrent.futures.ProcessPoolExecutor(
@@ -222,19 +257,27 @@ if __name__ == '__main__':
                     md.a.elo, md.b.elo = eloAB(
                         md.a.elo, md.b.elo, result,
                         md.a.games_played, md.b.games_played)
+                    la, lb = _short(md.a.spec), _short(md.b.spec)
+                    ab_key, ba_key = f"{la}|{lb}", f"{lb}|{la}"
                     if result == 1:
                         md.a.win += 1;  md.b.lose += 1
+                        h2h[ab_key]['w'] = h2h[ab_key].get('w', 0) + 1
+                        h2h[ba_key]['l'] = h2h[ba_key].get('l', 0) + 1
                         outcome = f"{md.a.spec} beat {md.b.spec}"
                     elif result == -1:
                         md.a.lose += 1; md.b.win += 1
+                        h2h[ab_key]['l'] = h2h[ab_key].get('l', 0) + 1
+                        h2h[ba_key]['w'] = h2h[ba_key].get('w', 0) + 1
                         outcome = f"{md.b.spec} beat {md.a.spec}"
                     else:
                         md.a.draw += 1; md.b.draw += 1
+                        h2h[ab_key]['d'] = h2h[ab_key].get('d', 0) + 1
+                        h2h[ba_key]['d'] = h2h[ba_key].get('d', 0) + 1
                         outcome = f"{md.a.spec} drew {md.b.spec}"
 
                     print(f"\n  Match {match_count}: {outcome}")
-                    _save_state(players, match_count)
-                    _print_standings(players, match_count)
+                    _save_state(players, match_count, h2h)
+                    _print_standings(players, match_count, h2h)
 
                     # Immediately submit a new match to keep the pool full
                     _submit(executor, in_flight, players)
@@ -246,4 +289,4 @@ if __name__ == '__main__':
             executor.shutdown(wait=False, cancel_futures=True)
 
     # Final standings printed after clean shutdown
-    _print_standings(players, match_count)
+    _print_standings(players, match_count, h2h)
