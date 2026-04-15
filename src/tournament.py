@@ -50,10 +50,15 @@ class Entry:
         self.win = 0
         self.draw = 0
         self.lose = 0
+        self.in_flight = 0  # matches currently running
 
     @property
     def games_played(self):
         return self.win + self.draw + self.lose
+
+    @property
+    def total_assigned(self):
+        return self.games_played + self.in_flight
 
     def __str__(self):
         return (f"{str(self.spec):<58} "
@@ -80,12 +85,12 @@ def eloAB(ra, rb, result):
 
 def select_pairing(players):
     """
-    Pick the player with the fewest completed games as player A.
-    Break ties randomly among equally under-played players.
+    Pick the player with the fewest total assigned games (completed + in-flight)
+    as player A. Break ties randomly among equally under-played players.
     Pick player B by ELO-weighted random selection from the rest.
     """
-    fewest = min(e.games_played for e in players)
-    candidates = [e for e in players if e.games_played == fewest]
+    fewest = min(e.total_assigned for e in players)
+    candidates = [e for e in players if e.total_assigned == fewest]
     player_a = random.choice(candidates)
     others = [p for p in players if p is not player_a]
     player_b = max(others, key=lambda x: x.elo + random.randint(0, 200))
@@ -93,8 +98,10 @@ def select_pairing(players):
 
 
 def _submit(executor, in_flight, players):
-    """Select a pairing and submit it to the executor, recording it in in_flight."""
+    """Select a pairing, increment in-flight counters, and submit to the executor."""
     a, b = select_pairing(players)
+    a.in_flight += 1
+    b.in_flight += 1
     # Randomly assign sides so neither player always has white
     if random.choice([True, False]):
         f = executor.submit(run_match, a.spec, b.spec)
@@ -144,6 +151,8 @@ if __name__ == '__main__':
 
                 for f in done:
                     md = in_flight.pop(f)
+                    md.a.in_flight -= 1
+                    md.b.in_flight -= 1
                     match_count += 1
 
                     try:
