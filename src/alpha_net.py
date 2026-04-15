@@ -106,41 +106,42 @@ class ResBlock(nn.Module):
         return out
     
 class OutBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, policy_filters=128):
         super(OutBlock, self).__init__()
         self.conv = nn.Conv2d(256, 1, kernel_size=1) # value head
         self.bn = nn.BatchNorm2d(1)
         self.fc1 = nn.Linear(8*8, 64)
         self.fc2 = nn.Linear(64, 1)
-        
-        self.conv1 = nn.Conv2d(256, 128, kernel_size=1) # policy head
-        self.bn1 = nn.BatchNorm2d(128)
+
+        self.conv1 = nn.Conv2d(256, policy_filters, kernel_size=1) # policy head
+        self.bn1 = nn.BatchNorm2d(policy_filters)
         self.logsoftmax = nn.LogSoftmax(dim=1)
-        self.fc = nn.Linear(8*8*128, 8*8*73)
-    
-    def forward(self,s):
+        self.fc = nn.Linear(8*8*policy_filters, 8*8*73)
+
+    def forward(self, s):
         v = F.relu(self.bn(self.conv(s))) # value head
-        v = v.view(-1, 8*8)  # batch_size X channel X height X width
+        v = v.view(-1, 8*8)
         v = F.relu(self.fc1(v))
         v = F.tanh(self.fc2(v))
-        
+
         p = F.relu(self.bn1(self.conv1(s))) # policy head
-        p = p.view(-1, 8*8*128)
+        p = p.view(-1, self.fc.in_features)
         p = self.fc(p)
         p = self.logsoftmax(p).exp()
         return p, v
-    
+
 class ChessNet(nn.Module):
-    def __init__(self):
+    def __init__(self, num_res_blocks=19, policy_filters=128):
         super(ChessNet, self).__init__()
         self.conv = ConvBlock()
-        for block in range(19):
-            setattr(self, "res_%i" % block,ResBlock())
-        self.outblock = OutBlock()
-    
-    def forward(self,s):
+        self.num_res_blocks = num_res_blocks
+        for block in range(num_res_blocks):
+            setattr(self, "res_%i" % block, ResBlock())
+        self.outblock = OutBlock(policy_filters=policy_filters)
+
+    def forward(self, s):
         s = self.conv(s)
-        for block in range(19):
+        for block in range(self.num_res_blocks):
             s = getattr(self, "res_%i" % block)(s)
         s = self.outblock(s)
         return s
