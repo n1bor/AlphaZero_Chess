@@ -3,14 +3,23 @@
 import numpy as np
 from chess_board import board as chessboard
 
+_PIECE_CHANNELS = {p: c for c, p in enumerate("RNBQKPrnbqkp")}
+# Pre-built lookup: ord(char) → channel index (-1 for empty square ' ')
+_ORD_TO_CHANNEL = np.full(128, -1, dtype=np.int8)
+for _p, _c in _PIECE_CHANNELS.items():
+    _ORD_TO_CHANNEL[ord(_p)] = _c
+
+
 def encode_board(board):
-    board_state = board.current_board; 
-    encoded = np.zeros([8,8,22]).astype(int)
-    encoder_dict = {"R":0, "N":1, "B":2, "Q":3, "K":4, "P":5, "r":6, "n":7, "b":8, "q":9, "k":10, "p":11}
-    for i in range(8):
-        for j in range(8):
-            if board_state[i,j] != " ":
-                encoded[i,j,encoder_dict[board_state[i,j]]] = 1
+    board_state = board.current_board
+    encoded = np.zeros([8, 8, 22], dtype=np.int32)
+
+    # Vectorised piece encoding: map every cell to a channel index in one pass,
+    # then use advanced indexing to set the relevant planes to 1.
+    ords = np.frompyfunc(ord, 1, 1)(board_state).astype(np.int8)  # (8,8) ord values
+    channels = _ORD_TO_CHANNEL[ords]                               # (8,8) channel or -1
+    rows, cols = np.where(channels >= 0)
+    encoded[rows, cols, channels[rows, cols]] = 1
     if board.player == 1:
         encoded[:,:,12] = 1 # player to move
     if board.K_move_count != 0:
