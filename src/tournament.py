@@ -1,6 +1,8 @@
 import random
 import multiprocessing
 import concurrent.futures
+import json
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -111,6 +113,40 @@ def _submit(executor, in_flight, players):
         in_flight[f] = MatchDetails(b, a)  # b is spec_a, a is spec_b
 
 
+STATE_FILE = '/workspace/chess/data/tournament_state.json'
+
+
+def _save_state(players, match_count):
+    state = {
+        'match_count': match_count,
+        'players': {str(e.spec): {'elo': e.elo, 'win': e.win, 'draw': e.draw, 'lose': e.lose}
+                    for e in players},
+    }
+    tmp = STATE_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp, STATE_FILE)  # atomic on POSIX
+
+
+def _load_state(players):
+    if not os.path.exists(STATE_FILE):
+        return 0
+    with open(STATE_FILE) as f:
+        state = json.load(f)
+    saved = state.get('players', {})
+    for e in players:
+        key = str(e.spec)
+        if key in saved:
+            e.elo   = saved[key]['elo']
+            e.win   = saved[key]['win']
+            e.draw  = saved[key]['draw']
+            e.lose  = saved[key]['lose']
+    loaded = state.get('match_count', 0)
+    if loaded:
+        print(f"  Resumed from {STATE_FILE} — {loaded} matches already played.")
+    return loaded
+
+
 def _print_standings(players, match_count):
     W = 80
     print(f"\n  ── Standings after {match_count} matches {'─' * (W - 30)}")
@@ -132,9 +168,9 @@ if __name__ == '__main__':
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     ctx = multiprocessing.get_context('spawn')
-    match_count = 0
     in_flight: dict = {}   # future -> MatchDetails
 
+    match_count = _load_state(players)
     print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
 
     with concurrent.futures.ProcessPoolExecutor(
@@ -179,6 +215,7 @@ if __name__ == '__main__':
                         outcome = f"{md.a.spec} drew {md.b.spec}"
 
                     print(f"\n  Match {match_count}: {outcome}")
+                    _save_state(players, match_count)
                     _print_standings(players, match_count)
 
                     # Immediately submit a new match to keep the pool full
