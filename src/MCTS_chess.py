@@ -13,16 +13,17 @@ from alpha_net import ChessNet
 import datetime
 
 class UCTNode():
-    def __init__(self, game, move, parent=None):
+    def __init__(self, game, move, parent=None, c_puct=1):
         self.game = game # state s
         self.move = move # action index
         self.is_expanded = False
-        self.parent = parent  
+        self.parent = parent
         self.children = {}
         self.child_priors = np.zeros([4672], dtype=np.float32)
         self.child_total_value = np.zeros([4672], dtype=np.float32)
         self.child_number_visits = np.zeros([4672], dtype=np.float32)
         self.action_idxes = []
+        self.c_puct = c_puct
         
     @property
     def number_visits(self):
@@ -44,7 +45,7 @@ class UCTNode():
         return self.child_total_value / (1 + self.child_number_visits)
     
     def child_U(self):
-        return math.sqrt(self.number_visits) * (
+        return self.c_puct * math.sqrt(self.number_visits) * (
             abs(self.child_priors) / (1 + self.child_number_visits))
     
     def best_child(self):
@@ -112,7 +113,7 @@ class UCTNode():
             copy_board = copy.deepcopy(self.game) # make copy of board
             copy_board = self.decode_n_move_pieces(copy_board,move)
             self.children[move] = UCTNode(
-              copy_board, move, parent=self)
+              copy_board, move, parent=self, c_puct=self.c_puct)
         return self.children[move]
     
     def backup(self, value_estimate: float):
@@ -133,8 +134,8 @@ class DummyNode(object):
         self.child_number_visits = collections.defaultdict(float)
 
 
-def UCT_search(game_state, num_reads,net):
-    root = UCTNode(game_state, move=None, parent=DummyNode())
+def UCT_search(game_state, num_reads, net, c_puct=1):
+    root = UCTNode(game_state, move=None, parent=DummyNode(), c_puct=c_puct)
     for i in range(num_reads):
         leaf = root.select_leaf()
         encoded_s = ed.encode_board(leaf.game); encoded_s = encoded_s.transpose(2,0,1)

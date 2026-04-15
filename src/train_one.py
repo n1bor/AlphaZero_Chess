@@ -15,6 +15,9 @@ import sys
 import shutil
 import config
 import time
+def ts():
+    return datetime.datetime.now().strftime("%H:%M:%S")
+
 class board_data(Dataset):
     def __init__(self, dataset): # dataset = np.array of (s, p, v)
         self.X = dataset[:,0]
@@ -38,22 +41,27 @@ class board_data_all(IterableDataset):
         self.loaders=[]
 
     def generate(self):
-        print(f'{time.time()< self.starttime+self.runtime}')
+        files_loaded = 0
+        records_yielded = 0
+        last_log = time.time()
+        print(f"[{ts()}][loader] starting — {len(self.files)} files available, runtime {self.runtime}s", flush=True)
         while (len(self.files)>0 or len(self.loaders)>0) and (time.time()< self.starttime+self.runtime):
             data_item=None
             while data_item==None and not (len(self.files)==0 and len(self.loaders)==0) and (time.time()< self.starttime+self.runtime):
-                if len(self.loaders)<50 and len(self.files)>0:
+                if len(self.loaders)<2 and len(self.files)>0:
                     file=random.choice(self.files)
                     self.files.remove(file)
-                    print(f"new file {file}")
+                    files_loaded += 1
+                    print(f"[{ts()}][loader] loading file {files_loaded} — {os.path.basename(file)} ({len(self.files)} remaining, {len(self.loaders)} active)", flush=True)
                     with open(file, 'rb') as fo:
                         try:
                             data=pickle.load(fo)
                         except EOFError:
-                            print(f"EOFError in file {file}")
+                            print(f"[{ts()}][loader] EOFError in file {file}", flush=True)
                             data=[]
                     data = np.array(data,dtype="object")
                     new_file_data=board_data(data)
+                    print(f"[{ts()}][loader] file loaded — {len(data)} records", flush=True)
 
                     newLoader=DataLoader(new_file_data,  shuffle=False, pin_memory=True)
                     self.loaders.append(iter(newLoader))
@@ -62,6 +70,12 @@ class board_data_all(IterableDataset):
                 if data_item==None:
                     self.loaders.remove(loader)
             if data_item!=None:
+                records_yielded += 1
+                now = time.time()
+                if now - last_log >= 10:
+                    elapsed = now - self.starttime
+                    print(f"[{ts()}][loader] {records_yielded:,} records yielded | elapsed {elapsed:.0f}s/{self.runtime}s | {len(self.loaders)} active loaders", flush=True)
+                    last_log = now
                 yield (torch.squeeze(data_item[0]),
                         torch.squeeze(data_item[1]),
                         torch.squeeze(data_item[2]))
@@ -85,7 +99,11 @@ def train(net,train_path,lr,batch_size,cpu,run):
     losses_per_batch = []
     losses_99=[]
     losses_9=[]
+    train_start = time.time()
+    batch_start = time.time()
+    print(f"[{ts()}][train] waiting for first batch (batch_size={batch_size})...", flush=True)
     for i,data in enumerate(train_loader,0):
+        batch_load_time = time.time() - batch_start
         state, policy, value = data
         if cuda:
             state, policy, value = state.cuda().float(), policy.float().cuda(), value.cuda().float()
@@ -96,11 +114,13 @@ def train(net,train_path,lr,batch_size,cpu,run):
         loss = criterion(value_pred[:,0], value, policy_pred, policy)
         loss.backward()
         optimizer.step()
-        
+
         total_loss += loss.item()
         roll_99=roll_99*0.99+loss.item()*0.01
         roll_9=roll_9*0.9+loss.item()*0.1
-        print(f"b:{i} l:{loss.item()} l9:{roll_9} l99:{roll_99}")
+        elapsed = time.time() - train_start
+        print(f"[{ts()}][train] b:{i} loss:{loss.item():.4f} l9:{roll_9:.4f} l99:{roll_99:.4f} | load:{batch_load_time:.1f}s elapsed:{elapsed:.0f}s", flush=True)
+        batch_start = time.time()
         losses_per_batch.append(loss.item())
         losses_99.append(roll_99)
         losses_9.append(roll_9)

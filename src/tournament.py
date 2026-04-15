@@ -38,15 +38,12 @@ class MatchDetails:
 if __name__=="__main__":
     players=[]
 
-    players.append(Entry(Stockfish(100,1,elo=1320)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/model_28_train_3.62_2024-09-06-184211.gz',2)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/model_28_train_3.62_2024-09-06-184211.gz',7)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/model_28_train_3.62_2024-09-06-184211.gz',15)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/model_13_train_4.44_2024-09-06-094323.gz',2)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/latest.gz',10)))
-    players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/best.gz',777)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/random.gz',10)))
-    #players.append(Entry(AlphaZero('/home/owensr/chess/data/model_data/random.gz',10)))
+    NET = '/home/owensr/chess/data/model_data/latest.gz'
+    STEPS = 5
+    for c in [1, 2, 3, 4]:
+        players.append(Entry(AlphaZero(NET, STEPS, c_puct=c)))
+    for depth in [5, 10]:
+        players.append(Entry(Stockfish(hash=256, depth=depth)))
                 
     pool = ThreadPool(processes=2)
     for i in range(10000):

@@ -6,9 +6,10 @@ from MCTS_chess import UCT_search,do_decode_n_move_pieces
 import encoder_decoder as ed
 
 class AlphaZero(Player):
-    def __init__(self,parameterFile,steps):
+    def __init__(self,parameterFile,steps,c_puct=1):
         self.parameterFile=parameterFile
         self.steps=steps
+        self.c_puct=c_puct
         #self.current_board=None
         checkpoint = torch.load(self.parameterFile,weights_only=True, map_location=torch.device('cpu') )
         remove_prefix = '_orig_mod.'
@@ -75,7 +76,7 @@ class AlphaZero(Player):
         for move in moves:
             current_board = self.doMove(current_board,move)
         
-        best_move, _ = UCT_search(current_board,self.steps,self.net)
+        best_move, _ = UCT_search(current_board,self.steps,self.net,self.c_puct)
         i_pos, f_pos, prom = ed.decode_action(current_board,best_move)
         #print(f"MOVE {i_pos} {f_pos} {prom}")
         best_move_txt=self.getMoveText(i_pos,f_pos,prom)
@@ -104,6 +105,6 @@ class AlphaZero(Player):
         return current_board.current_board.tolist()
     
     def __str__(self):
-        return f"Alpha {self.steps} {self.parameterFile}"
+        return f"Alpha steps={self.steps} c_puct={self.c_puct} {self.parameterFile}"
 
         
