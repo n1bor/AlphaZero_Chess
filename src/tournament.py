@@ -39,16 +39,29 @@ class PlayerSpec:
 
 def run_match(spec_a, spec_b):
     """Worker entry point. Builds both players in the worker process and plays a game."""
+    import os, sys
     from AlphaZero_player import AlphaZero
     from Stockfish import Stockfish
     from match import match
+
+    # Silence the per-player init prints and in-game move commentary that
+    # workers emit — they would interleave unreadably with the main process
+    # output.  Redirect to /dev/null for the lifetime of this worker call.
+    devnull = open(os.devnull, 'w')
+    sys.stdout = devnull
+    sys.stderr = devnull
 
     def build(spec):
         if spec.kind == 'alpha':
             return AlphaZero(spec.net_path, spec.steps, c_puct=spec.c_puct)
         return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
 
-    return match(build(spec_a), build(spec_b))
+    result = match(build(spec_a), build(spec_b))
+
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+    devnull.close()
+    return result
 
 
 class Entry:
