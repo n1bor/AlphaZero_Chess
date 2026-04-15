@@ -11,6 +11,11 @@ from typing import Optional
 # 12 is optimal for a 16-core CPU + RTX 4080 (see profiling notes).
 NUM_WORKERS = 12
 
+# Maximum wall-clock seconds a single match may take before the worker is
+# considered hung.  At 2000 MCTS steps a game rarely exceeds 30 minutes;
+# 3600 s gives plenty of headroom while still recovering from genuine hangs.
+MATCH_TIMEOUT = 3600
+
 
 @dataclass
 class PlayerSpec:
@@ -195,10 +200,15 @@ if __name__ == '__main__':
                     match_count += 1
 
                     try:
-                        result = f.result()
+                        result = f.result(timeout=MATCH_TIMEOUT)
+                    except concurrent.futures.TimeoutError:
+                        print(f"  Match timed out after {MATCH_TIMEOUT}s "
+                              f"({md.a.spec} vs {md.b.spec}) — resubmitting")
+                        f.cancel()
+                        _submit(executor, in_flight, players)
+                        continue
                     except Exception as e:
                         print(f"  Match error ({md.a.spec} vs {md.b.spec}): {e}")
-                        # Re-submit a replacement without updating stats
                         _submit(executor, in_flight, players)
                         continue
 
