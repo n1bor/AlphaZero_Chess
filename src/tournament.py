@@ -3,6 +3,7 @@ import multiprocessing
 import concurrent.futures
 import json
 import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
@@ -183,10 +184,18 @@ def _short(spec: PlayerSpec) -> str:
     return f"SF(d={spec.sf_depth})"
 
 
-def _print_standings(players, match_count, h2h):
+def _print_standings(players, match_count, h2h, start_time=None, matches_at_start=0):
     ranked = sorted(players, key=lambda x: -x.elo)
     W = 80
-    print(f"\n  ── Standings after {match_count} matches {'─' * (W - 30)}")
+    rate_str = ""
+    if start_time is not None:
+        elapsed = time.monotonic() - start_time
+        completed_this_session = match_count - matches_at_start
+        if elapsed > 0 and completed_this_session > 0:
+            gph = completed_this_session / elapsed * 3600
+            avg_min = elapsed / completed_this_session / 60
+            rate_str = f"  {gph:.1f} games/hr  (~{avg_min:.1f} min/game)"
+    print(f"\n  ── Standings after {match_count} matches {'─' * (W - 30)}{rate_str}")
     for p in ranked:
         print(f"  {p}")
 
@@ -230,6 +239,8 @@ if __name__ == '__main__':
     h2h: dict = defaultdict(dict)  # "labelA|labelB" -> {w, d, l}
 
     match_count = _load_state(players, h2h)
+    matches_at_start = match_count
+    start_time = time.monotonic()
     print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
 
     with concurrent.futures.ProcessPoolExecutor(
@@ -290,7 +301,8 @@ if __name__ == '__main__':
 
                     print(f"\n  Match {match_count}: {outcome}")
                     _save_state(players, match_count, h2h)
-                    _print_standings(players, match_count, h2h)
+                    _print_standings(players, match_count, h2h,
+                                     start_time, matches_at_start)
 
                     # Immediately submit a new match to keep the pool full
                     _submit(executor, in_flight, players)
@@ -302,4 +314,4 @@ if __name__ == '__main__':
             executor.shutdown(wait=False, cancel_futures=True)
 
     # Final standings printed after clean shutdown
-    _print_standings(players, match_count, h2h)
+    _print_standings(players, match_count, h2h, start_time, matches_at_start)
