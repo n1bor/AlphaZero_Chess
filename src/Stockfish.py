@@ -10,7 +10,7 @@ class Stockfish(Player):
         self.elo=elo
         self.endgames=endgames
 
-        self.code="/home/owensr/chess/stockfish/stockfish-ubuntu-x86-64-avx2"
+        self.code="/workspace/chess/stockfish/stockfish-ubuntu-x86-64-avx2"
 
         self.child=pexpect.spawn(self.code)
         self.child.expect('Stockfish')
