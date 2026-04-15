@@ -80,14 +80,20 @@ class MatchDetails:
     b: Entry   # corresponds to second argument of run_match (spec_b)
 
 
-def eloAB(ra, rb, result):
+def _k_factor(games_played: int) -> float:
+    """Decaying K-factor: high early for fast convergence, floors at 32."""
+    return max(32.0, 128.0 / (games_played + 1) ** 0.5)
+
+
+def eloAB(ra, rb, result, games_a, games_b):
     qa = 10 ** (ra / 400)
     qb = 10 ** (rb / 400)
     ea = qa / (qa + qb)
     eb = qb / (qa + qb)
     sa = (result + 1) / 2
     sb = 1 - sa
-    return ra + 32 * (sa - ea), rb + 32 * (sb - eb)
+    return (ra + _k_factor(games_a) * (sa - ea),
+            rb + _k_factor(games_b) * (sb - eb))
 
 
 def select_pairing(players):
@@ -213,7 +219,9 @@ if __name__ == '__main__':
                         continue
 
                     # Update ELO and win/draw/loss counts
-                    md.a.elo, md.b.elo = eloAB(md.a.elo, md.b.elo, result)
+                    md.a.elo, md.b.elo = eloAB(
+                        md.a.elo, md.b.elo, result,
+                        md.a.games_played, md.b.games_played)
                     if result == 1:
                         md.a.win += 1;  md.b.lose += 1
                         outcome = f"{md.a.spec} beat {md.b.spec}"
