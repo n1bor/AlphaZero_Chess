@@ -62,7 +62,7 @@ child.expect('Stockfish')
 child.sendline("setoption name MultiPV value 10")
 child.sendline("setoption name Hash value 256")
 child.sendline("setoption name UCI_ShowWDL value true")
-child.sendline("setoption name SyzygyPath value setoption name SyzygyPath value")
+child.sendline("setoption name SyzygyPath value /workspace/chess/data/syzygy")
 
 child.sendline("uci")
 child.expect("uciok")
