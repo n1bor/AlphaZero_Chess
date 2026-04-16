@@ -69,7 +69,7 @@ child.expect("uciok")
 
 dataset_p = []
 
-for gameId in range(1):
+for gameId in range(100000):
     if time.time()>startTime+runtime:
         print("exceeded runtime - exiting")
         break
