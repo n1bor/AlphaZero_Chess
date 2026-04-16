@@ -28,10 +28,7 @@ class Stockfish(Player):
     def getMove(self,moves):
 
         self.child.sendline("position startpos moves "+' '.join(moves))
-        if len(moves)<10:
-            self.child.sendline("go movetime 100")
-        else:
-            self.child.sendline("go depth "+str(self.depth))
+        self.child.sendline("go depth "+str(self.depth))
         
         i=self.child.expect([r"bestmove (.*) ponder",r"bestmove (.*)\r"])
         
