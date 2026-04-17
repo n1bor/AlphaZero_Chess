@@ -235,18 +235,19 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
 
 
 if __name__ == '__main__':
-    NET    = '/workspace/chess/data/model_data/model_1_loss2.22_2026-04-15-062956.gz'
+    NET    = '/workspace/chess/data/model_data/small_model_20hrs_2.08.gz'
     # AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
     AR_NET = '/workspace/chess/data/model_data/small_model_10hrs_2.12.gz'
     STEPS  = 200
 
     players = []
-    for c in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]:
+    for c in [1, 2, 3, 4, 5, 6, 7, 8]:
         players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=STEPS, c_puct=c)))
-    for c in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5]:
+    for c in [1, 2, 3, 4, 5, 6, 7, 8]:
         players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=STEPS, c_puct=c)))
-    for c in [3]:
+    for c in [4]:
         players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=800 , c_puct=c)))
+        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=400 , c_puct=c)))
     for depth in [1, 5, 10, 15]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
