@@ -142,13 +142,27 @@ class UCTNode():
         return self.children[move]
     
     def backup(self, value_estimate: float):
+        # The NN is trained with current-player-perspective values:
+        # +1 = the player to move at the evaluated position is winning.
+        #
+        # Each time we step up the tree the perspective flips (the parent is
+        # the opponent of the child), so we negate at every level.
+        #
+        # Derivation for a leaf with player P and value V (+1 = P winning):
+        #   leaf.total_value (used by leaf's parent, player opp(P)):
+        #       += -V  (good for P means bad for opp(P))
+        #   leaf.parent.total_value (used by grandparent, player P):
+        #       += V   (two negations = back to P's perspective)
+        #   …and so on, alternating sign at each level.
+        #
+        # The old code used player==1 → +V, player==0 → -V, which is correct
+        # only when the leaf is player=0 (white); it is inverted when the leaf
+        # is player=1 (black).
         current = self
         while current.parent is not None:
             current.number_visits += 1
-            if current.game.player == 1: # same as current.parent.game.player = 0
-                current.total_value += (1*value_estimate) # value estimate +1 = white win
-            elif current.game.player == 0: # same as current.parent.game.player = 1
-                current.total_value += (-1*value_estimate)
+            value_estimate = -value_estimate   # flip perspective at each level
+            current.total_value += value_estimate
             current = current.parent
         
 
@@ -243,12 +257,16 @@ def MCTS_self_play(chessnet,num_games,cpu):
                 checkmate = True
                 
         dataset_p = []
-        for idx,data in enumerate(dataset):
-            s,p = data
+        for idx, (s, p) in enumerate(dataset):
             if idx == 0:
-                dataset_p.append([s,p,0])
+                dataset_p.append([s, p, 0])
             else:
-                dataset_p.append([s,p,value])
+                # Use current-player perspective: white positions keep `value`
+                # (white-perspective outcome), black positions flip it so that
+                # +1 always means "the player to move is winning", consistent
+                # with the NN training target and backup convention.
+                v = value if idx % 2 == 0 else -value
+                dataset_p.append([s, p, v])
         del dataset
         save_as_pickle("dataset_cpu%i_%i_%s.gz" % (cpu,idxx, datetime.datetime.today().strftime("%Y-%m-%d")),dataset_p)
 
