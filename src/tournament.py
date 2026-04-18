@@ -55,13 +55,16 @@ def run_match(spec_a, spec_b):
             return AlphaZero(spec.net_path, spec.steps, c_puct=spec.c_puct)
         return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
 
+    import time as _time
+    t0 = _time.monotonic()
     result = match(build(spec_a), build(spec_b))
+    duration = _time.monotonic() - t0
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
     log.close()
     os.remove(log_path)
-    return result
+    return result, duration
 
 
 class Entry:
@@ -71,6 +74,7 @@ class Entry:
         self.win = 0
         self.draw = 0
         self.lose = 0
+        self.total_seconds = 0.0
         self.in_flight = 0  # matches currently running
 
     @property
@@ -81,11 +85,16 @@ class Entry:
     def total_assigned(self):
         return self.games_played + self.in_flight
 
+    @property
+    def avg_seconds(self):
+        return self.total_seconds / self.games_played if self.games_played else 0.0
+
     def __str__(self):
+        avg = f"{self.avg_seconds:>6.0f}s/g" if self.games_played else "       n/a"
         return (f"{str(self.spec):<58} "
                 f"elo:{self.elo:>7.1f}  "
                 f"W{self.win}/D{self.draw}/L{self.lose} "
-                f"({self.games_played}g)")
+                f"({self.games_played}g)  {avg}")
 
 
 @dataclass
@@ -157,7 +166,8 @@ STATE_FILE = '/workspace/chess/data/tournament_state.json'
 def _save_state(players, match_count, h2h):
     state = {
         'match_count': match_count,
-        'players': {str(e.spec): {'elo': e.elo, 'win': e.win, 'draw': e.draw, 'lose': e.lose}
+        'players': {str(e.spec): {'elo': e.elo, 'win': e.win, 'draw': e.draw, 'lose': e.lose,
+                                   'total_seconds': e.total_seconds}
                     for e in players},
         'h2h': {k: dict(v) for k, v in h2h.items()},
     }
@@ -176,10 +186,11 @@ def _load_state(players, h2h):
     for e in players:
         key = str(e.spec)
         if key in saved:
-            e.elo   = saved[key]['elo']
-            e.win   = saved[key]['win']
-            e.draw  = saved[key]['draw']
-            e.lose  = saved[key]['lose']
+            e.elo          = saved[key]['elo']
+            e.win          = saved[key]['win']
+            e.draw         = saved[key]['draw']
+            e.lose         = saved[key]['lose']
+            e.total_seconds = saved[key].get('total_seconds', 0.0)
     for k, v in state.get('h2h', {}).items():
         h2h[k].update(v)
     loaded = state.get('match_count', 0)
@@ -188,15 +199,30 @@ def _load_state(players, h2h):
     return loaded
 
 
-def _short(spec: PlayerSpec) -> str:
+def _make_net_labels(players) -> dict:
+    """Map each unique net_path to a short unique name by stripping the common filename prefix."""
+    paths = list({e.spec.net_path for e in players if e.spec.kind == 'alpha'})
+    stems = [os.path.basename(p).removesuffix('.gz') for p in paths]
+    if len(stems) > 1:
+        prefix_len = len(os.path.commonprefix(stems))
+    else:
+        prefix_len = max(0, len(stems[0]) - 12) if stems else 0
+    labels = {}
+    for path, stem in zip(paths, stems):
+        unique = stem[prefix_len:].lstrip('_')
+        labels[path] = unique[:12] if unique else stem[-12:]
+    return labels
+
+
+def _short(spec: PlayerSpec, net_labels: dict = None) -> str:
     """Short label used in the head-to-head table."""
     if spec.kind == 'alpha':
-        model = os.path.basename(spec.net_path)
-        return f"Az({model[:8]} c={spec.c_puct})"
+        name = (net_labels or {}).get(spec.net_path) or os.path.basename(spec.net_path)[:10]
+        return f"Az({name} s={spec.steps} c={spec.c_puct})"
     return f"SF(d={spec.sf_depth})"
 
 
-def _print_standings(players, match_count, h2h, start_time=None, matches_at_start=0):
+def _print_standings(players, match_count, h2h, start_time=None, matches_at_start=0, net_labels=None):
     ranked = sorted(players, key=lambda x: -x.elo)
     W = 80
     rate_str = ""
@@ -213,7 +239,7 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
 
     if not h2h:
         return
-    labels = [_short(p.spec) for p in ranked]
+    labels = [_short(p.spec, net_labels) for p in ranked]
     col = max(len(l) for l in labels)
     row = max(len(l) for l in labels)
     # header
@@ -247,6 +273,7 @@ if __name__ == '__main__':
     for depth in [1, 5, 10, 15]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
+    net_labels = _make_net_labels(players)
     ctx = multiprocessing.get_context('spawn')
     in_flight: dict = {}        # future -> MatchDetails
     h2h: dict = defaultdict(dict)  # "labelA|labelB" -> {w, d, l}
@@ -286,7 +313,7 @@ if __name__ == '__main__':
                     match_count += 1
 
                     try:
-                        result = f.result(timeout=MATCH_TIMEOUT)
+                        result, duration = f.result(timeout=MATCH_TIMEOUT)
                     except concurrent.futures.TimeoutError:
                         print(f"  Match timed out after {MATCH_TIMEOUT}s "
                               f"({md.a.spec} vs {md.b.spec}) — resubmitting")
@@ -299,11 +326,13 @@ if __name__ == '__main__':
                     except Exception as e:
                         print(f"  Match error ({md.a.spec} vs {md.b.spec}): {e}")
                     else:
+                        md.a.total_seconds += duration
+                        md.b.total_seconds += duration
                         # Update ELO and win/draw/loss counts
                         md.a.elo, md.b.elo = eloAB(
                             md.a.elo, md.b.elo, result,
                             md.a.games_played, md.b.games_played)
-                        la, lb = _short(md.a.spec), _short(md.b.spec)
+                        la, lb = _short(md.a.spec, net_labels), _short(md.b.spec, net_labels)
                         ab_key, ba_key = f"{la}|{lb}", f"{lb}|{la}"
                         if result == 1:
                             md.a.win += 1;  md.b.lose += 1
@@ -324,7 +353,7 @@ if __name__ == '__main__':
                         print(f"\n  Match {match_count}: {outcome}")
                         _save_state(players, match_count, h2h)
                         _print_standings(players, match_count, h2h,
-                                         start_time, matches_at_start)
+                                         start_time, matches_at_start, net_labels)
 
                     if pool_broken:
                         break
@@ -343,4 +372,4 @@ if __name__ == '__main__':
         print("Cancelling in-flight matches and shutting down...\n")
 
     # Final standings printed after clean shutdown
-    _print_standings(players, match_count, h2h, start_time, matches_at_start)
+    _print_standings(players, match_count, h2h, start_time, matches_at_start, net_labels)
