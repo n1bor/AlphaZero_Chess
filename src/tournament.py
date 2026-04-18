@@ -16,7 +16,7 @@ NUM_WORKERS = 20
 # Maximum wall-clock seconds a single match may take before the worker is
 # considered hung.  At 2000 MCTS steps a game rarely exceeds 30 minutes;
 # 3600 s gives plenty of headroom while still recovering from genuine hangs.
-MATCH_TIMEOUT = 3600
+MATCH_TIMEOUT = 7200
 
 
 @dataclass
@@ -47,6 +47,7 @@ def run_match(spec_a, spec_b):
 
     log_path = f"/tmp/tournament_worker_{os.getpid()}.log"
     log = open(log_path, 'w', buffering=1)
+    log.write(f"Player A: {spec_a}\nPlayer B: {spec_b}\n\n")
     devnull = open(os.devnull, 'w')
     sys.stdout = devnull
     sys.stderr = log
@@ -293,11 +294,10 @@ if __name__ == '__main__':
     STEPS  = 200
 
     players = []
-    for c in [1, 2, 2.5, 3, 3.5, 4] :
-        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=STEPS, c_puct=c)))
-        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=400, c_puct=c)))
+    for c in [2.5, 3, 3.5] :
+        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=1600, c_puct=c)))
         players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=800, c_puct=c)))
-    for depth in [1, 5, 10, 15]:
+    for depth in [5,6,7,8,9, 10,11,12,13,14,15]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     net_labels = _make_net_labels(players)
