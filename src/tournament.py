@@ -56,20 +56,9 @@ def run_match(spec_a, spec_b):
         return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
 
     import time as _time
-    import gc
     t0 = _time.monotonic()
-    player_a = build(spec_a)
-    player_b = build(spec_b)
-    result = match(player_a, player_b)
+    result = match(build(spec_a), build(spec_b))
     duration = _time.monotonic() - t0
-
-    # Explicitly free players so Stockfish subprocesses are killed and
-    # PyTorch GPU memory is released before the worker takes the next match.
-    for p in (player_a, player_b):
-        if hasattr(p, 'close'):
-            p.close()
-    del player_a, player_b
-    gc.collect()
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
@@ -319,7 +308,8 @@ if __name__ == '__main__':
         in_flight.clear()
 
         with concurrent.futures.ProcessPoolExecutor(
-                max_workers=NUM_WORKERS, mp_context=ctx) as executor:
+                max_workers=NUM_WORKERS, mp_context=ctx,
+                max_tasks_per_child=1) as executor:
 
             # Fill the pool to NUM_WORKERS
             for _ in range(NUM_WORKERS):
