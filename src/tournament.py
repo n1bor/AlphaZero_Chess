@@ -240,12 +240,28 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
     if not h2h:
         return
     labels = [_short(p.spec, net_labels) for p in ranked]
-    col = max(len(l) for l in labels)
+
+    def _split(label):
+        mid = len(label) // 2
+        left = label.rfind(' ', 0, mid + 1)
+        right = label.find(' ', mid)
+        if left == -1 and right == -1:
+            return label, ''
+        if left == -1:
+            split = right
+        elif right == -1:
+            split = left
+        else:
+            split = left if (mid - left) <= (right - mid) else right
+        return label[:split], label[split + 1:]
+
+    splits = [_split(l) for l in labels]
+    col = max(max(len(s[0]), len(s[1])) for s in splits)
     row = max(len(l) for l in labels)
-    # header
+    indent = ' ' * (row + 4)
     print(f"\n  Head-to-head  (row beat col  W/D/L)")
-    header = ' ' * (row + 4) + '  '.join(f"{l:>{col}}" for l in labels)
-    print(f"  {header}")
+    print(f"  {indent}{'  '.join(s[0].rjust(col) for s in splits)}")
+    print(f"  {indent}{'  '.join(s[1].rjust(col) for s in splits)}")
     for pa, la in zip(ranked, labels):
         cells = []
         for pb, lb in zip(ranked, labels):
