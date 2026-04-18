@@ -47,7 +47,8 @@ def run_match(spec_a, spec_b):
 
     log_path = f"/tmp/tournament_worker_{os.getpid()}.log"
     log = open(log_path, 'w', buffering=1)
-    sys.stdout = log
+    devnull = open(os.devnull, 'w')
+    sys.stdout = devnull
     sys.stderr = log
 
     def build(spec):
@@ -55,13 +56,23 @@ def run_match(spec_a, spec_b):
             return AlphaZero(spec.net_path, spec.steps, c_puct=spec.c_puct)
         return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
 
+    def wrap(player):
+        original = player.getMove
+        def logged(moves):
+            move = original(moves)
+            log.write(f"move {len(moves) + 1}: {move}  [{' '.join(moves)}]\n")
+            return move
+        player.getMove = logged
+        return player
+
     import time as _time
     t0 = _time.monotonic()
-    result = match(build(spec_a), build(spec_b))
+    result = match(wrap(build(spec_a)), wrap(build(spec_b)))
     duration = _time.monotonic() - t0
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
+    devnull.close()
     log.close()
     os.remove(log_path)
     return result, duration
