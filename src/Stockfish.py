@@ -58,6 +58,16 @@ class Stockfish(Player):
             board[8-int(row[8])]=list(row[:8])
         return board
     
+    def close(self):
+        try:
+            self.child.sendline("quit")
+            self.child.close(force=True)
+        except Exception:
+            pass
+
+    def __del__(self):
+        self.close()
+
     def __str__(self):
         return f"Stockfish h:{self.hash} d:{self.depth} sk:{self.skill} elo:{self.elo} end:{self.endgames}"
 
