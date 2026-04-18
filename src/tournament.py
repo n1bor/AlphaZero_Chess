@@ -45,12 +45,10 @@ def run_match(spec_a, spec_b):
     from Stockfish import Stockfish
     from match import match
 
-    # Silence the per-player init prints and in-game move commentary that
-    # workers emit — they would interleave unreadably with the main process
-    # output.  Redirect to /dev/null for the lifetime of this worker call.
-    devnull = open(os.devnull, 'w')
-    sys.stdout = devnull
-    sys.stderr = devnull
+    log_path = f"/tmp/tournament_worker_{os.getpid()}.log"
+    log = open(log_path, 'w', buffering=1)
+    sys.stdout = log
+    sys.stderr = log
 
     def build(spec):
         if spec.kind == 'alpha':
@@ -61,7 +59,8 @@ def run_match(spec_a, spec_b):
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
-    devnull.close()
+    log.close()
+    os.remove(log_path)
     return result
 
 
@@ -241,13 +240,10 @@ if __name__ == '__main__':
     STEPS  = 200
 
     players = []
-    for c in [1, 2, 3, 4, 5, 6, 7, 8]:
+    for c in [1, 2, 2.5, 3, 3.5, 4] :
         players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=STEPS, c_puct=c)))
-    for c in [1, 2, 3, 4, 5, 6, 7, 8]:
-        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=STEPS, c_puct=c)))
-    for c in [4]:
-        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=800 , c_puct=c)))
-        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=400 , c_puct=c)))
+        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=400, c_puct=c)))
+        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=800, c_puct=c)))
     for depth in [1, 5, 10, 15]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
@@ -260,15 +256,23 @@ if __name__ == '__main__':
     start_time = time.monotonic()
     print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
 
-    with concurrent.futures.ProcessPoolExecutor(
-            max_workers=NUM_WORKERS, mp_context=ctx) as executor:
+    try:
+      while True:  # outer loop: recreate pool if a worker is killed
+        # Reset in-flight counters for any futures that died with the old pool
+        for md in in_flight.values():
+            md.a.in_flight -= 1
+            md.b.in_flight -= 1
+        in_flight.clear()
 
-        # Fill the pool to NUM_WORKERS
-        for _ in range(NUM_WORKERS):
-            _submit(executor, in_flight, players)
+        with concurrent.futures.ProcessPoolExecutor(
+                max_workers=NUM_WORKERS, mp_context=ctx) as executor:
 
-        try:
-            while True:
+            # Fill the pool to NUM_WORKERS
+            for _ in range(NUM_WORKERS):
+                _submit(executor, in_flight, players)
+
+            pool_broken = False
+            while not pool_broken:
                 # Block until at least one match finishes
                 done, _ = concurrent.futures.wait(
                     list(in_flight.keys()),
@@ -287,48 +291,56 @@ if __name__ == '__main__':
                         print(f"  Match timed out after {MATCH_TIMEOUT}s "
                               f"({md.a.spec} vs {md.b.spec}) — resubmitting")
                         f.cancel()
-                        _submit(executor, in_flight, players)
-                        continue
+                    except concurrent.futures.process.BrokenProcessPool as e:
+                        print(f"  Process pool broken ({md.a.spec} vs {md.b.spec}): {e}"
+                              f" — recreating pool")
+                        pool_broken = True
+                        break
                     except Exception as e:
                         print(f"  Match error ({md.a.spec} vs {md.b.spec}): {e}")
-                        _submit(executor, in_flight, players)
-                        continue
-
-                    # Update ELO and win/draw/loss counts
-                    md.a.elo, md.b.elo = eloAB(
-                        md.a.elo, md.b.elo, result,
-                        md.a.games_played, md.b.games_played)
-                    la, lb = _short(md.a.spec), _short(md.b.spec)
-                    ab_key, ba_key = f"{la}|{lb}", f"{lb}|{la}"
-                    if result == 1:
-                        md.a.win += 1;  md.b.lose += 1
-                        h2h[ab_key]['w'] = h2h[ab_key].get('w', 0) + 1
-                        h2h[ba_key]['l'] = h2h[ba_key].get('l', 0) + 1
-                        outcome = f"{md.a.spec} beat {md.b.spec}"
-                    elif result == -1:
-                        md.a.lose += 1; md.b.win += 1
-                        h2h[ab_key]['l'] = h2h[ab_key].get('l', 0) + 1
-                        h2h[ba_key]['w'] = h2h[ba_key].get('w', 0) + 1
-                        outcome = f"{md.b.spec} beat {md.a.spec}"
                     else:
-                        md.a.draw += 1; md.b.draw += 1
-                        h2h[ab_key]['d'] = h2h[ab_key].get('d', 0) + 1
-                        h2h[ba_key]['d'] = h2h[ba_key].get('d', 0) + 1
-                        outcome = f"{md.a.spec} drew {md.b.spec}"
+                        # Update ELO and win/draw/loss counts
+                        md.a.elo, md.b.elo = eloAB(
+                            md.a.elo, md.b.elo, result,
+                            md.a.games_played, md.b.games_played)
+                        la, lb = _short(md.a.spec), _short(md.b.spec)
+                        ab_key, ba_key = f"{la}|{lb}", f"{lb}|{la}"
+                        if result == 1:
+                            md.a.win += 1;  md.b.lose += 1
+                            h2h[ab_key]['w'] = h2h[ab_key].get('w', 0) + 1
+                            h2h[ba_key]['l'] = h2h[ba_key].get('l', 0) + 1
+                            outcome = f"{md.a.spec} beat {md.b.spec}"
+                        elif result == -1:
+                            md.a.lose += 1; md.b.win += 1
+                            h2h[ab_key]['l'] = h2h[ab_key].get('l', 0) + 1
+                            h2h[ba_key]['w'] = h2h[ba_key].get('w', 0) + 1
+                            outcome = f"{md.b.spec} beat {md.a.spec}"
+                        else:
+                            md.a.draw += 1; md.b.draw += 1
+                            h2h[ab_key]['d'] = h2h[ab_key].get('d', 0) + 1
+                            h2h[ba_key]['d'] = h2h[ba_key].get('d', 0) + 1
+                            outcome = f"{md.a.spec} drew {md.b.spec}"
 
-                    print(f"\n  Match {match_count}: {outcome}")
-                    _save_state(players, match_count, h2h)
-                    _print_standings(players, match_count, h2h,
-                                     start_time, matches_at_start)
+                        print(f"\n  Match {match_count}: {outcome}")
+                        _save_state(players, match_count, h2h)
+                        _print_standings(players, match_count, h2h,
+                                         start_time, matches_at_start)
+
+                    if pool_broken:
+                        break
 
                     # Immediately submit a new match to keep the pool full
-                    _submit(executor, in_flight, players)
+                    try:
+                        _submit(executor, in_flight, players)
+                    except concurrent.futures.process.BrokenProcessPool as e:
+                        print(f"  Process pool broken on submit: {e} — recreating pool")
+                        pool_broken = True
+                        break
 
-        except KeyboardInterrupt:
-            print(f"\nInterrupted — {match_count} matches completed, "
-                  f"{len(in_flight)} in flight.")
-            print("Cancelling in-flight matches and shutting down...\n")
-            executor.shutdown(wait=False, cancel_futures=True)
+    except KeyboardInterrupt:
+        print(f"\nInterrupted — {match_count} matches completed, "
+              f"{len(in_flight)} in flight.")
+        print("Cancelling in-flight matches and shutting down...\n")
 
     # Final standings printed after clean shutdown
     _print_standings(players, match_count, h2h, start_time, matches_at_start)
