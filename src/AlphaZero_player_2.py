@@ -157,8 +157,18 @@ class AlphaZero2(Player):
         self._do_move(self._board, best_move_txt)
         self._n_applied += 1
 
+        # Detach the chosen child as the next search root, then drop all other
+        # branches from the old root.  UCTNode has a parent↔child circular
+        # reference that Python's reference counter cannot break on its own;
+        # clearing root.children removes the strong reference from the old root
+        # to its non-chosen children, leaving only the cycle GC to clean them up
+        # — which it will do promptly because the objects are now isolated.
         if best_move_idx in root.children:
-            self._pending_root = detach_as_root(root.children[best_move_idx])
+            chosen = root.children.pop(best_move_idx)  # extract before clearing
+            root.children.clear()                       # drop all other branches
+            self._pending_root = detach_as_root(chosen)
+        else:
+            root.children.clear()
 
         return best_move_txt
 

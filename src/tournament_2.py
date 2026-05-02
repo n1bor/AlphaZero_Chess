@@ -40,7 +40,7 @@ class PlayerSpec:
 
 def run_match(spec_a, spec_b):
     """Worker entry point. Builds both players in the worker process and plays a game."""
-    import os, sys
+    import gc, os, sys
     from AlphaZero_player_2 import AlphaZero2 as AlphaZero  # optimised player
     from Stockfish import Stockfish
     from match import match
@@ -70,6 +70,11 @@ def run_match(spec_a, spec_b):
     t0 = _time.monotonic()
     result = match(wrap(build(spec_a)), wrap(build(spec_b)))
     duration = _time.monotonic() - t0
+
+    # UCTNode has parent↔child circular refs that the reference counter cannot
+    # free on its own.  A forced GC sweep here ensures those trees are reclaimed
+    # before the result is returned, keeping worker memory usage flat.
+    gc.collect()
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
