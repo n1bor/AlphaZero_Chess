@@ -43,7 +43,37 @@ class board():
         self.copy_board = None; self.en_passant_copy = None; self.r1_move_count_copy = None; self.r2_move_count_copy = None; 
         self.k_move_count_copy = None; self.R1_move_count_copy = None; self.R2_move_count_copy = None; self.K_move_count_copy = None
         self.player = 0 # current player's turn (0:white, 1:black)
-        
+
+    def __copy__(self):
+        """Fast shallow copy used by MCTS instead of copy.deepcopy."""
+        new = object.__new__(board)
+        new.current_board = self.current_board.copy()
+        new.init_board = new.current_board
+        new.move_count = self.move_count
+        new.no_progress_count = self.no_progress_count
+        new.repetitions_w = self.repetitions_w
+        new.repetitions_b = self.repetitions_b
+        new.move_history = None
+        new.en_passant = self.en_passant
+        new.en_passant_move = self.en_passant_move
+        new.r1_move_count = self.r1_move_count
+        new.r2_move_count = self.r2_move_count
+        new.k_move_count = self.k_move_count
+        new.R1_move_count = self.R1_move_count
+        new.R2_move_count = self.R2_move_count
+        new.K_move_count = self.K_move_count
+        new.player = self.player
+        new.en_passant_move_copy = None
+        new.copy_board = None
+        new.en_passant_copy = None
+        new.r1_move_count_copy = None
+        new.r2_move_count_copy = None
+        new.k_move_count_copy = None
+        new.R1_move_count_copy = None
+        new.R2_move_count_copy = None
+        new.K_move_count_copy = None
+        return new
+
     def move_rules_P(self,current_position):
         i, j = current_position
         next_positions = []

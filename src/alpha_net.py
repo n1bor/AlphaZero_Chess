@@ -120,12 +120,12 @@ class OutBlock(nn.Module):
 
     def forward(self, s):
         v = F.relu(self.bn(self.conv(s))) # value head
-        v = v.view(-1, 8*8)
+        v = v.reshape(-1, 8*8)
         v = F.relu(self.fc1(v))
         v = F.tanh(self.fc2(v))
 
         p = F.relu(self.bn1(self.conv1(s))) # policy head
-        p = p.view(-1, self.fc.in_features)
+        p = p.reshape(-1, self.fc.in_features)
         p = self.fc(p)
         p = self.logsoftmax(p).exp()
         return p, v
