@@ -59,13 +59,11 @@ class AlphaZero2(Player):
             self.net.cuda()
         self.net.eval()
 
-        # torch.compile fuses ops and reduces kernel-launch overhead.
-        # mode="reduce-overhead" uses CUDA graphs, which work well for the
-        # fixed-shape [BATCH_SIZE, 22, 8, 8] tensors produced by UCT_search_batched.
-        try:
-            self.net = torch.compile(self.net, mode="reduce-overhead")
-        except Exception:
-            pass
+        # torch.compile is intentionally omitted here.  mode="reduce-overhead"
+        # uses CUDA graphs, which require fixed tensor shapes.  We send shape
+        # [1, 22, 8, 8] for the bootstrap pass and [BATCH_SIZE, 22, 8, 8] for
+        # every subsequent batch — two shapes means two graphs captured
+        # simultaneously across 12 workers, exhausting VRAM and killing workers.
 
         print(f"{self}")
 
