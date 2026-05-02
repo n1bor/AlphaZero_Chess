@@ -184,7 +184,7 @@ def _revert_virtual_loss(path, vl: int = 1):
         node.total_value += vl
 
 
-# ── tree-reuse helper ─────────────────────────────────────────────────────────
+# ── tree-reuse helpers ────────────────────────────────────────────────────────
 
 def detach_as_root(node: UCTNode) -> UCTNode:
     """Promote a child node to search root, preserving its visit statistics."""
@@ -194,6 +194,48 @@ def detach_as_root(node: UCTNode) -> UCTNode:
     dummy.child_total_value[node.move] = node.total_value
     node.parent = dummy
     return node
+
+
+def _drop_subtree(node: UCTNode) -> None:
+    """Recursively null out parent references and clear children.
+
+    UCTNode forms reference cycles (parent ↔ child via .parent and
+    .children[]).  Python's reference counter cannot break these, so
+    without explicit help the cycle GC must do it — often long after
+    the subtree is logically dead.  Setting .parent = None on every
+    node in the subtree removes the child→parent leg of each cycle,
+    reducing every node's refcount to zero as soon as its parent's
+    .children dict is cleared, so the reference counter frees the
+    whole subtree immediately.
+    """
+    node.parent = None
+    for child in node.children.values():
+        _drop_subtree(child)
+    node.children.clear()
+
+
+# Minimum visit count a child must have to be kept in the reused subtree.
+# Children below this threshold are pruned after each move to stop the
+# pending root growing without bound.  10 ≈ 0.3% of 3200 steps; well-
+# visited paths are retained, rarely-explored branches are discarded.
+PRUNE_MIN_VISITS = 10
+
+
+def prune_tree(node: UCTNode, min_visits: int = PRUNE_MIN_VISITS) -> None:
+    """Drop low-visit children to keep the reused tree memory-bounded.
+
+    Traverses the subtree rooted at *node* and drops any child whose
+    visit count (in the parent's child_number_visits array) is below
+    *min_visits*.  Uses _drop_subtree so dropped nodes are freed
+    immediately by the reference counter rather than waiting for the
+    cycle GC.
+    """
+    to_drop = [m for m in list(node.children)
+               if node.child_number_visits[m] < min_visits]
+    for m in to_drop:
+        _drop_subtree(node.children.pop(m))
+    for child in node.children.values():
+        prune_tree(child, min_visits)
 
 
 # ── main search ───────────────────────────────────────────────────────────────

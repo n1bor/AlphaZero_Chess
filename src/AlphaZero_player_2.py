@@ -16,7 +16,7 @@ import torch
 from Player import Player
 from alpha_net import ChessNet
 from chess_board import board as c_board
-from MCTS_chess_2 import UCT_search_batched, detach_as_root
+from MCTS_chess_2 import UCT_search_batched, detach_as_root, _drop_subtree, prune_tree
 import encoder_decoder as ed
 
 
@@ -158,16 +158,22 @@ class AlphaZero2(Player):
         self._n_applied += 1
 
         # Detach the chosen child as the next search root, then drop all other
-        # branches from the old root.  UCTNode has a parent↔child circular
-        # reference that Python's reference counter cannot break on its own;
-        # clearing root.children removes the strong reference from the old root
-        # to its non-chosen children, leaving only the cycle GC to clean them up
-        # — which it will do promptly because the objects are now isolated.
+        # branches from the old root.
+        # _drop_subtree explicitly nulls parent refs before clearing children so
+        # the reference counter can free dropped nodes immediately, rather than
+        # waiting for the cycle GC to collect parent↔child cycles.
+        # prune_tree then trims rarely-visited nodes from the kept subtree so
+        # that the pending root stays memory-bounded across a long game.
         if best_move_idx in root.children:
             chosen = root.children.pop(best_move_idx)  # extract before clearing
-            root.children.clear()                       # drop all other branches
+            for child in root.children.values():
+                _drop_subtree(child)
+            root.children.clear()
             self._pending_root = detach_as_root(chosen)
+            prune_tree(self._pending_root)
         else:
+            for child in root.children.values():
+                _drop_subtree(child)
             root.children.clear()
 
         return best_move_txt
