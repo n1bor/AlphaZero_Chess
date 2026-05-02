@@ -41,6 +41,8 @@ class PlayerSpec:
 def run_match(spec_a, spec_b):
     """Worker entry point. Builds both players in the worker process and plays a game."""
     import gc, os, sys
+    import psutil
+    import torch
     from AlphaZero_player_2 import AlphaZero2 as AlphaZero  # optimised player
     from Stockfish import Stockfish
     from match import match
@@ -52,29 +54,68 @@ def run_match(spec_a, spec_b):
     sys.stdout = devnull
     sys.stderr = log
 
+    _proc = psutil.Process()
+    _peak_rss_mb = [0.0]  # mutable container so the closure can update it
+
+    def _mem_snapshot(label, alpha_players=()):
+        rss_mb = _proc.memory_info().rss / 1024 / 1024
+        if rss_mb > _peak_rss_mb[0]:
+            _peak_rss_mb[0] = rss_mb
+        if torch.cuda.is_available():
+            gpu_alloc = torch.cuda.memory_allocated() / 1024 / 1024
+            gpu_reserv = torch.cuda.memory_reserved() / 1024 / 1024
+            gpu_str = f" gpu_alloc={gpu_alloc:.0f}MB gpu_reserv={gpu_reserv:.0f}MB"
+        else:
+            gpu_str = ""
+        gc0, gc1, gc2 = gc.get_count()
+        tree_str = ""
+        for p in alpha_players:
+            root = getattr(p, '_pending_root', None)
+            if root is not None:
+                n_children = len(root.children)
+                total_visits = int(root.child_number_visits.sum())
+                tree_str += f" tree(ch={n_children} vis={total_visits})"
+            else:
+                tree_str += " tree(none)"
+        log.write(f"[{label}] rss={rss_mb:.0f}MB{gpu_str} gc=({gc0},{gc1},{gc2}){tree_str}\n")
+
     def build(spec):
         if spec.kind == 'alpha':
             return AlphaZero(spec.net_path, spec.steps, c_puct=spec.c_puct)
         return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
 
+    player_a = build(spec_a)
+    player_b = build(spec_b)
+    alpha_players = [p for p in (player_a, player_b) if isinstance(p, AlphaZero)]
+
+    _mem_snapshot("start", alpha_players)
+
     def wrap(player):
         original = player.getMove
         def logged(moves):
             move = original(moves)
-            log.write(f"move {len(moves) + 1}: {move}  [{' '.join(moves)}]\n")
+            n = len(moves) + 1
+            log.write(f"move {n}: {move}  [{' '.join(moves)}]\n")
+            if n % 10 == 0:
+                _mem_snapshot(f"mem@{n}", alpha_players)
             return move
         player.getMove = logged
         return player
 
     import time as _time
     t0 = _time.monotonic()
-    result = match(wrap(build(spec_a)), wrap(build(spec_b)))
+    result = match(wrap(player_a), wrap(player_b))
     duration = _time.monotonic() - t0
+
+    _mem_snapshot("end", alpha_players)
 
     # UCTNode has parent↔child circular refs that the reference counter cannot
     # free on its own.  A forced GC sweep here ensures those trees are reclaimed
     # before the result is returned, keeping worker memory usage flat.
     gc.collect()
+
+    _mem_snapshot(f"end-postgc peak={_peak_rss_mb[0]:.0f}MB")
+    log.write(f"[result] outcome={result} duration={duration:.1f}s\n")
 
     sys.stdout = sys.__stdout__
     sys.stderr = sys.__stderr__
