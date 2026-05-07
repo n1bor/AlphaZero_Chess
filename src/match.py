@@ -5,48 +5,125 @@ import cProfile
 import pstats
 import io
 from dataclasses import dataclass
+import numpy as np
+from chess_board import board as c_board
 from Stockfish import Stockfish
 from Player import Player
 from AlphaZero_player import AlphaZero
+
+MOVE_LIMIT = 500
+
+
+def _apply_move_str(board, move_str):
+    """Apply a UCI move string to a chess_board, including castling rook."""
+    i_x = ord(move_str[0].lower()) - 97
+    i_y = 8 - int(move_str[1])
+    f_x = ord(move_str[2].lower()) - 97
+    f_y = 8 - int(move_str[3])
+    prom = move_str[4:5].lower() if len(move_str) == 5 else None
+    board.move_piece((i_y, i_x), (f_y, f_x), prom)
+    iy, ix = i_y, i_x
+    fy, fx = f_y, f_x
+    if board.current_board[fy, fx] in ["K", "k"] and abs(fx - ix) == 2:
+        if iy == 7 and fx - ix > 0:
+            board.player = 0; board.move_piece((7, 7), (7, 5), None)
+        if iy == 7 and fx - ix < 0:
+            board.player = 0; board.move_piece((7, 0), (7, 3), None)
+        if iy == 0 and fx - ix > 0:
+            board.player = 1; board.move_piece((0, 7), (0, 5), None)
+        if iy == 0 and fx - ix < 0:
+            board.player = 1; board.move_piece((0, 0), (0, 3), None)
+
+
+def _is_insufficient(white, black, board):
+    """Return True if the position is a theoretical draw by insufficient material."""
+    if not white and not black:
+        return True
+    if not white and len(black) == 1 and black[0].lower() in ('n', 'b'):
+        return True
+    if not black and len(white) == 1 and white[0].upper() in ('N', 'B'):
+        return True
+    if (len(white) == 1 and white[0] == 'B' and
+            len(black) == 1 and black[0] == 'b'):
+        def bishop_colour(piece_char):
+            positions = list(zip(*np.where(board == piece_char)))
+            return (positions[0][0] + positions[0][1]) % 2 if positions else None
+        if bishop_colour('B') == bishop_colour('b'):
+            return True
+    return False
+
+
+def _draw_check(board, moves):
+    """Return a draw description string if the position is drawn, else None."""
+    pieces = [p for p in board.current_board.flatten()
+              if p != ' ' and p.upper() != 'K']
+    if not pieces:
+        return f"draw - only kings after {len(moves)} moves"
+    if board.no_progress_count >= 100:
+        return f"draw - 50-move rule after {len(moves)} moves"
+    white = [str(p) for p in pieces if p.isupper()]
+    black = [str(p) for p in pieces if p.islower()]
+    if _is_insufficient(white, black, board.current_board):
+        return f"draw - insufficient material after {len(moves)} moves"
+    if len(moves) >= MOVE_LIMIT:
+        return f"draw - {MOVE_LIMIT} move limit"
+    return None
 
 
 def match(a, b):
     moves = []
     lastmove = ""
-    checkmate = False
     result = 0
-    while not checkmate:
+    board = c_board()
+
+    while True:
+        draw_msg = _draw_check(board, moves)
+        if draw_msg:
+            print(draw_msg)
+            break
+
+        # ── Player A moves ────────────────────────────────────────────────────
         move = a.getMove(moves)
         if move == "onlykings":
-            print(f"draw - only kings {' '.join(moves)}")
+            print(f"draw - only kings after {len(moves)} moves")
             break
         if move is None:
-            print(f"Player B {b} won {' '.join(moves)}")
-            checkmate = True
-            result = -1
+            if board.check_status():
+                print(f"Player B {b} won - checkmate after {len(moves)} moves")
+                result = -1
+            else:
+                print(f"draw - stalemate after {len(moves)} moves")
             break
         if move == lastmove:
             print(f"error {' '.join(moves)}")
             break
         lastmove = move
         moves.append(move)
+        _apply_move_str(board, move)
+
+        draw_msg = _draw_check(board, moves)
+        if draw_msg:
+            print(draw_msg)
+            break
+
+        # ── Player B moves ────────────────────────────────────────────────────
         move = b.getMove(moves)
         if move == "onlykings":
-            print(f"draw - only kings {' '.join(moves)}")
+            print(f"draw - only kings after {len(moves)} moves")
             break
         if move is None:
-            print(f"Player A {a} won {' '.join(moves)}")
-            result = 1
-            checkmate = True
+            if board.check_status():
+                print(f"Player A {a} won - checkmate after {len(moves)} moves")
+                result = 1
+            else:
+                print(f"draw - stalemate after {len(moves)} moves")
             break
         if move == lastmove:
             print(f"error {' '.join(moves)}")
             break
         lastmove = move
         moves.append(move)
-        if len(moves) > 250:
-            print(f"draw 250 {' '.join(moves)}")
-            break
+        _apply_move_str(board, move)
 
     aBoard = a.getBoard(moves)
     bBoard = b.getBoard(moves)
