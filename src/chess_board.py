@@ -562,6 +562,10 @@ class board():
             piece = self.current_board[i,j]
             self.current_board[i,j] = " "
             i, j = final_position
+            if piece == "P" or self.current_board[i,j] != " ":
+                self.no_progress_count = 0
+            else:
+                self.no_progress_count += 1
             if piece == "R" and initial_position == (7,0):
                 self.R1_move_count += 1
             if piece == "R" and initial_position == (7,7):
@@ -588,6 +592,10 @@ class board():
             piece = self.current_board[i,j]
             self.current_board[i,j] = " "
             i, j = final_position
+            if piece == "p" or self.current_board[i,j] != " ":
+                self.no_progress_count = 0
+            else:
+                self.no_progress_count += 1
             if piece == "r" and initial_position == (0,0):
                 self.r1_move_count += 1
             if piece == "r" and initial_position == (0,7):
