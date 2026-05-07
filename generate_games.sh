@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-WORKERS=${1:-8}
+WORKERS=${1:-12}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)/src"
 GAME_SECS=3600   # runtime passed to each generate.py invocation
 

@@ -334,17 +334,20 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
 
 
 if __name__ == '__main__':
-    NET    = '/workspace/chess/data/model_data/continuous_l992.0777_val2.1277_2026-04-21-211947.gz'
+    #NET    = '/workspace/chess/data/model_data/continuous_l992.0777_val2.1277_2026-04-21-211947.gz'
     # AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
-    # AR_NET = '/workspace/chess/data/model_data/latest_1.99_val_2.03.gz'
+    NET = '/workspace/chess/data/model_data/latest_1.99_val_2.03.gz'
     #AR_NET = '/workspace/chess/data/model_data/model_1_loss2.04_2026-04-25-045106.gz'
-    AR_NET = '/workspace/chess/data/model_data/continuous_3_2026-05-02-154203_vl2.0243.gz'
+    AR_NET = '/workspace/chess/data/model_data/2.0243_2026-05-02-154203.gz'
+    AR2_NET = '/workspace/chess/data/model_data/2.1309_4_2026-05-05-185223.gz'
     STEPS  = 200
 
     players = []
-    for steps in [3200] :
+    for steps in [1600] :
+        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=steps, c_puct=3)))
         players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=steps, c_puct=3)))
-    for depth in [9]:
+        players.append(Entry(PlayerSpec('alpha', net_path=AR2_NET, steps=steps, c_puct=3)))
+    for depth in [9,8,7]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     net_labels = _make_net_labels(players)

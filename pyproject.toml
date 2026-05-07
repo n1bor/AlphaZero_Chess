@@ -11,4 +11,5 @@ dependencies = [
     "compress-pickle",
     "pexpect",
     "pandas",
+    "psutil>=7.2.2",
 ]

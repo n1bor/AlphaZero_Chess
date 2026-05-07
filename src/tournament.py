@@ -11,7 +11,7 @@ from typing import Optional
 
 # Number of matches to keep running in parallel at all times.
 # 12 is optimal for a 16-core CPU + RTX 4080 (see profiling notes).
-NUM_WORKERS = 20
+NUM_WORKERS = 12
 
 # Maximum wall-clock seconds a single match may take before the worker is
 # considered hung.  At 2000 MCTS steps a game rarely exceeds 30 minutes;
@@ -288,16 +288,17 @@ def _print_standings(players, match_count, h2h, start_time=None, matches_at_star
 
 
 if __name__ == '__main__':
-    NET    = '/workspace/chess/data/model_data/small_model_20hrs_2.08.gz'
+    NET    = '/workspace/chess/data/model_data/continuous_l992.0777_val2.1277_2026-04-21-211947.gz'
     # AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
-    AR_NET = '/workspace/chess/data/model_data/small_model_10hrs_2.12.gz'
+    # AR_NET = '/workspace/chess/data/model_data/latest_1.99_val_2.03.gz'
+    #AR_NET = '/workspace/chess/data/model_data/model_1_loss2.04_2026-04-25-045106.gz'
+    AR_NET = '/workspace/chess/data/model_data/continuous_3_2026-05-02-154203_vl2.0243.gz'
     STEPS  = 200
 
     players = []
-    for c in [2.5, 3, 3.5] :
-        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=1600, c_puct=c)))
-        players.append(Entry(PlayerSpec('alpha', net_path=NET, steps=800, c_puct=c)))
-    for depth in [5,6,7,8,9, 10,11,12,13,14,15]:
+    for steps in [3200] :
+        players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=steps, c_puct=3)))
+    for depth in [9]:
         players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
 
     net_labels = _make_net_labels(players)
