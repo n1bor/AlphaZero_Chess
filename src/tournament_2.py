@@ -181,9 +181,9 @@ def select_pairing(players):
     """
     Pick the player with the fewest total assigned games (completed + in-flight)
     as player A. Break ties randomly among equally under-played players.
-    Pick player B as either the next-higher or next-lower ELO neighbour of
-    player A (chosen at random).  This keeps matches competitive and prevents
-    high-ELO outliers from monopolising the opponent slot.
+    Pick player B from the 2 closest neighbours above or below player A in ELO
+    (up to 4 candidates total).  This keeps matches mostly competitive while
+    giving some exposure to opponents two steps away in the ranking.
     """
     fewest = min(e.total_assigned for e in players)
     candidates = [e for e in players if e.total_assigned == fewest]
@@ -191,15 +191,29 @@ def select_pairing(players):
     others = sorted([p for p in players if p is not player_a], key=lambda x: x.elo)
     elo_a = player_a.elo
     idx = next((i for i, p in enumerate(others) if p.elo >= elo_a - 1e-9), len(others))
-    above_elo = others[idx].elo if idx < len(others) else None
-    below_elo = others[idx - 1].elo if idx > 0 else None
-    # For each distinct neighbour ELO level, pick one player at random from that
-    # level — this avoids always selecting the same index-0 player when many
-    # players share the same ELO (e.g. at tournament start).
+
+    # Collect up to 2 distinct ELO levels above and below player_a.
+    above_elos = []
+    for p in others[idx:]:
+        if not above_elos or abs(p.elo - above_elos[-1]) > 1e-9:
+            above_elos.append(p.elo)
+        if len(above_elos) == 2:
+            break
+
+    below_elos = []
+    for p in reversed(others[:idx]):
+        if not below_elos or abs(p.elo - below_elos[-1]) > 1e-9:
+            below_elos.append(p.elo)
+        if len(below_elos) == 2:
+            break
+
+    # For each distinct ELO level, pick one representative at random (handles
+    # ties — many players sharing the same ELO at tournament start, for example).
     neighbours = []
-    for target in dict.fromkeys(e for e in [above_elo, below_elo] if e is not None):
+    for target in above_elos + below_elos:
         pool = [p for p in others if abs(p.elo - target) < 1e-9]
         neighbours.append(random.choice(pool))
+
     player_b = random.choice(neighbours)
     return player_a, player_b
 
@@ -338,7 +352,7 @@ if __name__ == '__main__':
     # AR_NET = '/workspace/chess/data/model_data/model_1_loss2.53_2026-04-14-194300.gz'
     NET = '/workspace/chess/data/model_data/latest_1.99_val_2.03.gz'
     #AR_NET = '/workspace/chess/data/model_data/model_1_loss2.04_2026-04-25-045106.gz'
-    AR_NET = '/workspace/chess/data/model_data/2.0243_2026-05-02-154203.gz'
+    AR_NET = '/workspace/chess/data/model_data/2.5273_continuous_5_2026-05-07-204308_vl2.5273.gz'
     AR2_NET = '/workspace/chess/data/model_data/2.1309_4_2026-05-05-185223.gz'
     STEPS  = 200
 
