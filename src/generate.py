@@ -122,8 +122,8 @@ for gameId in range(100000):
             break
 
         # Insufficient material: K+minor vs K, or K+B vs K+B same colour
-        white = [p for p in pieces if p.isupper()]
-        black = [p for p in pieces if p.islower()]
+        white = [str(p) for p in pieces if p.isupper()]
+        black = [str(p) for p in pieces if p.islower()]
         if _is_insufficient(white, black, current_board.current_board):
             result = f"draw (insufficient material  W:{white} B:{black})"
             break
