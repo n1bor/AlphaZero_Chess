@@ -74,11 +74,11 @@ for gameId in range(100000):
         print("exceeded runtime - exiting")
         break
 
-    print(f"RunId {runId} game {gameId} remaining time {startTime+runtime-time.time()}")
     current_board = c_board()
     moveNumber=0
     moves=""
-    
+    result="?"
+
     continueGame=True
     while continueGame:
         board_state = copy.deepcopy(ed.encode_board(current_board))
@@ -87,16 +87,15 @@ for gameId in range(100000):
         child.sendline("go depth 10")
         i=child.expect([r"bestmove (.*) ponder",r"bestmove (.*)\r"])
         bestScore=-999999
-        
+
         scoreList=[]
         moveList=[]
         for line in child.before.decode().splitlines():
-            #print("l:"+line)
             m=re.match("info depth 10 seldepth (\d+) multipv (\d+) score (cp|mate) ([-]*\d+) wdl (\d+) (\d+) (\d+) nodes (\d+) nps (\d+) hashfull (\d+) tbhits (\d+) time (\d+) pv ([a-zA-Z0-9_]*)",line)
             if m:
                 (_,_,mate,score,win,draw,lose,_,_,_,_,_,proposedMove)=m.groups()
                 score=int(score)
-                
+
                 if mate=="mate":
                     if score>0:
                         score=1000+(10-score)*100
@@ -113,23 +112,24 @@ for gameId in range(100000):
                 if score>(bestScore-200):
                     scoreList.append(score)
                     moveList.append(proposedMove)
-                
 
         if i==0:
-            out=child.after.decode()    
+            out=child.after.decode()
             b=re.match(r"bestmove (.*) ponder",out)
         else:
             out=child.after.decode()
             b=re.match(r"bestmove (.*)\r",out)
         bestmove=b.group(1)
-        
+
         if bestmove=="(none)":
-            print(f"checkmate moves:{moveNumber}")
+            if current_board.check_status():
+                result = "white wins" if current_board.player == 1 else "black wins"
+            else:
+                result = "stalemate"
             break
 
         max=softmax(scoreList)
         newmove=np.random.choice(moveList,1,True,max)
-        print(f"N:{newmove} B:{bestmove} {moveNumber}")
 
         policy=np.zeros(4672)
         for (move,odds) in zip(moveList,max):
@@ -143,11 +143,11 @@ for gameId in range(100000):
                     promote="knight"
                 case "B":
                     promote="bishop"
-            try: 
+            try:
                 enc_index=ed.encode_action(current_board,initial,final,promote)
             except:
                 continueGame=False
-                print(f"moves: {moves} newmove {newmove}")
+                result = "error"
                 break
             policy[enc_index]=odds
         dataset_p.append([copy.deepcopy(ed.encode_board(current_board)),
@@ -155,12 +155,13 @@ for gameId in range(100000):
         (initial,final,promote)=alg_to_xy(newmove[0])
         current_board=do_decode_n_move_pieces(current_board,initial,final,promote)
 
-        #moves=moves+" "+bestmove
         moves=moves+" "+newmove[0]
         moveNumber+=1
-        if moveNumber>500 or (bestDraw>997 and moveNumber>100):
-            print(f"draw moves:{moveNumber}")
+        if moveNumber>750:
+            result = "draw"
             break
+
+    print(f"game {gameId}: {result}  moves={moveNumber}")
 
 print("saving games")
 with open(f"{config.rootDir}/data/games/data_{runId}.gz", 'wb') as output:
