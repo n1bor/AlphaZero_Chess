@@ -158,7 +158,10 @@ for gameId in range(100000):
         moves=moves+" "+newmove[0]
         moveNumber+=1
         if moveNumber>750:
-            result = "draw"
+            board_flat = current_board.current_board.flatten()
+            white_pieces = ''.join(sorted(p for p in board_flat if p.isupper() and p != 'K'))
+            black_pieces = ''.join(sorted(p.upper() for p in board_flat if p.islower() and p != 'k'))
+            result = f"draw  W:[{white_pieces}] B:[{black_pieces}]"
             break
 
     print(f"game {gameId}: {result}  moves={moveNumber}")
