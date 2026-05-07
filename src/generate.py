@@ -81,6 +81,11 @@ for gameId in range(100000):
 
     continueGame=True
     while continueGame:
+        if not any(p for p in current_board.current_board.flatten()
+                   if p != ' ' and p.upper() != 'K'):
+            result = "draw (kings only)"
+            break
+
         board_state = copy.deepcopy(ed.encode_board(current_board))
 
         child.sendline("position startpos moves "+moves)
