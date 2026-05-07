@@ -158,7 +158,7 @@ for gameId in range(100000):
         #moves=moves+" "+bestmove
         moves=moves+" "+newmove[0]
         moveNumber+=1
-        if moveNumber>500 or (bestDraw>997 and moveNumber>100):
+        if moveNumber>750:
             print(f"draw moves:{moveNumber}")
             break
 
