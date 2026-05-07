@@ -55,6 +55,35 @@ def do_decode_n_move_pieces(board,i,f,p):
             board.move_piece((0,0),(0,3),None)
     return board
 
+def _is_insufficient(white, black, board):
+    """Return True if the position is a theoretical draw by insufficient material."""
+    def only_minors(pieces):
+        return all(p.upper() in ('N', 'B') for p in pieces)
+
+    # K vs K+minor  or  K vs K (kings only handled separately, but guard here too)
+    if not white and not black:
+        return True
+    if not white and len(black) == 1 and black[0].lower() in ('n', 'b'):
+        return True
+    if not black and len(white) == 1 and white[0].upper() in ('N', 'B'):
+        return True
+
+    # K+B vs K+B — draw only when both bishops are on the same colour square
+    if (len(white) == 1 and white[0] == 'B' and
+            len(black) == 1 and black[0] == 'b'):
+        # Find square colour for each bishop
+        def bishop_square_colour(piece_char, board):
+            positions = list(zip(*np.where(board == piece_char)))
+            if not positions:
+                return None
+            r, c = positions[0]
+            return (r + c) % 2
+        if bishop_square_colour('B', board) == bishop_square_colour('b', board):
+            return True
+
+    return False
+
+
 code=config.rootDir+"/stockfish/stockfish-ubuntu-x86-64-avx2"
 
 child=pexpect.spawn(code)
@@ -81,9 +110,22 @@ for gameId in range(100000):
 
     continueGame=True
     while continueGame:
-        if not any(p for p in current_board.current_board.flatten()
-                   if p != ' ' and p.upper() != 'K'):
+        pieces = [p for p in current_board.current_board.flatten()
+                  if p != ' ' and p.upper() != 'K']
+
+        if not pieces:
             result = "draw (kings only)"
+            break
+
+        if current_board.no_progress_count >= 100:
+            result = "draw (50-move rule)"
+            break
+
+        # Insufficient material: K+minor vs K, or K+B vs K+B same colour
+        white = [p for p in pieces if p.isupper()]
+        black = [p for p in pieces if p.islower()]
+        if _is_insufficient(white, black, current_board.current_board):
+            result = f"draw (insufficient material  W:{white} B:{black})"
             break
 
         board_state = copy.deepcopy(ed.encode_board(current_board))
