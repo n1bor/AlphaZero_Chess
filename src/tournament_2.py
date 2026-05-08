@@ -32,11 +32,13 @@ class PlayerSpec:
     sf_skill: int = -1
     sf_elo: int = -1
     sf_endgames: bool = True
+    sf_random_plies: int = 0
 
     def __str__(self):
         if self.kind == 'alpha':
             return f"Alpha steps={self.steps} c_puct={self.c_puct} {self.net_path}"
-        return f"Stockfish h:{self.sf_hash} d:{self.sf_depth} sk:{self.sf_skill} elo:{self.sf_elo} end:{self.sf_endgames}"
+        rnd = f" rnd:{self.sf_random_plies}" if self.sf_random_plies else ""
+        return f"Stockfish h:{self.sf_hash} d:{self.sf_depth} sk:{self.sf_skill} elo:{self.sf_elo} end:{self.sf_endgames}{rnd}"
 
 
 def run_match(spec_a, spec_b, tournament_start_str=""):
@@ -83,7 +85,8 @@ def run_match(spec_a, spec_b, tournament_start_str=""):
     def build(spec):
         if spec.kind == 'alpha':
             return AlphaZero(spec.net_path, spec.steps, c_puct=spec.c_puct)
-        return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo, spec.sf_endgames)
+        return Stockfish(spec.sf_hash, spec.sf_depth, spec.sf_skill, spec.sf_elo,
+                         spec.sf_endgames, spec.sf_random_plies)
 
     player_a = build(spec_a)
     player_b = build(spec_b)
@@ -392,7 +395,7 @@ if __name__ == '__main__':
         players.append(Entry(PlayerSpec('alpha', net_path=AR_NET, steps=steps, c_puct=3)))
         players.append(Entry(PlayerSpec('alpha', net_path=AR2_NET, steps=steps, c_puct=3)))
     for depth in [9,8,7]:
-        players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth)))
+        players.append(Entry(PlayerSpec('stockfish', sf_hash=256, sf_depth=depth, sf_random_plies=20)))
 
     net_labels = _make_net_labels(players)
     ctx = multiprocessing.get_context('spawn')
