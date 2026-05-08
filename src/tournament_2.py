@@ -1,3 +1,4 @@
+import datetime
 import random
 import multiprocessing
 import concurrent.futures
@@ -38,7 +39,7 @@ class PlayerSpec:
         return f"Stockfish h:{self.sf_hash} d:{self.sf_depth} sk:{self.sf_skill} elo:{self.sf_elo} end:{self.sf_endgames}"
 
 
-def run_match(spec_a, spec_b):
+def run_match(spec_a, spec_b, tournament_start_str=""):
     """Worker entry point. Builds both players in the worker process and plays a game."""
     import gc, os, sys
     import psutil
@@ -104,7 +105,7 @@ def run_match(spec_a, spec_b):
 
     import time as _time
     t0 = _time.monotonic()
-    result = match(wrap(player_a), wrap(player_b))
+    result, game_moves = match(wrap(player_a), wrap(player_b))
     duration = _time.monotonic() - t0
 
     _mem_snapshot("end", alpha_players)
@@ -122,6 +123,27 @@ def run_match(spec_a, spec_b):
     devnull.close()
     log.close()
     os.remove(log_path)
+
+    # Write one row to the per-matchup log in /tmp
+    if tournament_start_str:
+        name_a = _spec_log_name(spec_a)
+        name_b = _spec_log_name(spec_b)
+        n1, n2 = sorted([name_a, name_b])
+        match_log = f"/tmp/tournament_{tournament_start_str}_{n1}_vs_{n2}.log"
+        if result == 1:
+            result_str = "white_wins"
+        elif result == -1:
+            result_str = "black_wins"
+        else:
+            result_str = "draw"
+        ts = _time.strftime("%Y-%m-%d %H:%M:%S")
+        moves_str = " ".join(game_moves)
+        with open(match_log, 'a') as mf:
+            mf.write(
+                f"{ts}  white={name_a}  black={name_b}"
+                f"  result={result_str}  moves={moves_str}\n"
+            )
+
     return result, duration
 
 
@@ -218,17 +240,17 @@ def select_pairing(players):
     return player_a, player_b
 
 
-def _submit(executor, in_flight, players):
+def _submit(executor, in_flight, players, tournament_start_str=""):
     """Select a pairing, increment in-flight counters, and submit to the executor."""
     a, b = select_pairing(players)
     a.in_flight += 1
     b.in_flight += 1
     # Randomly assign sides so neither player always has white
     if random.choice([True, False]):
-        f = executor.submit(run_match, a.spec, b.spec)
+        f = executor.submit(run_match, a.spec, b.spec, tournament_start_str)
         in_flight[f] = MatchDetails(a, b)
     else:
-        f = executor.submit(run_match, b.spec, a.spec)
+        f = executor.submit(run_match, b.spec, a.spec, tournament_start_str)
         in_flight[f] = MatchDetails(b, a)  # b is spec_a, a is spec_b
 
 
@@ -292,6 +314,14 @@ def _short(spec: PlayerSpec, net_labels: dict = None) -> str:
         name = (net_labels or {}).get(spec.net_path) or os.path.basename(spec.net_path)[:10]
         return f"Az({name} s={spec.steps} c={spec.c_puct})"
     return f"SF(d={spec.sf_depth})"
+
+
+def _spec_log_name(spec: PlayerSpec) -> str:
+    """Filesystem-safe short name for match log filenames."""
+    if spec.kind == 'alpha':
+        stem = os.path.basename(spec.net_path).removesuffix('.gz')
+        return f"Az_{stem[:24]}_s{spec.steps}"
+    return f"SF_d{spec.sf_depth}"
 
 
 def _print_standings(players, match_count, h2h, start_time=None, matches_at_start=0, net_labels=None):
@@ -369,10 +399,12 @@ if __name__ == '__main__':
     in_flight: dict = {}        # future -> MatchDetails
     h2h: dict = defaultdict(dict)  # "labelA|labelB" -> {w, d, l}
 
+    tournament_start_str = datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     match_count = _load_state(players, h2h)
     matches_at_start = match_count
     start_time = time.monotonic()
     print(f"Starting tournament: {NUM_WORKERS} concurrent matches, {len(players)} players")
+    print(f"Match logs: /tmp/tournament_{tournament_start_str}_*.log")
 
     try:
       while True:  # outer loop: recreate pool if a worker is killed
@@ -388,7 +420,7 @@ if __name__ == '__main__':
 
             # Fill the pool to NUM_WORKERS
             for _ in range(NUM_WORKERS):
-                _submit(executor, in_flight, players)
+                _submit(executor, in_flight, players, tournament_start_str)
 
             pool_broken = False
             while not pool_broken:
@@ -452,7 +484,7 @@ if __name__ == '__main__':
 
                     # Immediately submit a new match to keep the pool full
                     try:
-                        _submit(executor, in_flight, players)
+                        _submit(executor, in_flight, players, tournament_start_str)
                     except concurrent.futures.process.BrokenProcessPool as e:
                         print(f"  Process pool broken on submit: {e} — recreating pool")
                         pool_broken = True

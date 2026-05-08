@@ -132,7 +132,7 @@ def match(a, b):
             print(f"{aBoard} != {bBoard} for {' '.join(moves)}")
             raise Exception(f"{aBoard} != {bBoard} for {' '.join(moves)}")
 
-    return result
+    return result, moves
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,10 +351,10 @@ if __name__ == "__main__":
 
         pr = cProfile.Profile()
         pr.enable()
-        match(playerA, playerB)
+        result, moves = match(playerA, playerB)
         pr.disable()
 
         _profile_clock.report()
         _print_cprofile_summary(pr, top_n=25)
     else:
-        match(playerA, playerB)
+        result, moves = match(playerA, playerB)
