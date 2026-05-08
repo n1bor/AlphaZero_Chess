@@ -187,8 +187,9 @@ class MatchDetails:
 
 
 def _k_factor(games_played: int) -> float:
-    """Decaying K-factor: high early for fast convergence, floors at 32."""
-    return max(32.0, 128.0 / (games_played + 1) ** 0.5)
+    """Decaying K-factor: 128 at game 0, ~32 at game 15, ~8 at game 256.
+    Floors at 8 so ratings keep tightening as sample size grows."""
+    return max(8.0, 128.0 / (games_played + 1) ** 0.5)
 
 
 def eloAB(ra, rb, result, games_a, games_b):
