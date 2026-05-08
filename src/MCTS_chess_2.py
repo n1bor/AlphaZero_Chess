@@ -270,6 +270,12 @@ def UCT_search_batched(game_state, num_reads: int, net, c_puct: float = 1,
             root.expand(cp_np)
         root.backup(v_scalar)
         reads_done = 1
+    elif root.action_idxes:
+        # Tree reuse: root is already expanded and has accumulated visit counts, but
+        # Dirichlet noise was applied only once when it was first expanded.  Without
+        # re-applying noise here, every move's search starts from the same priors and
+        # the game becomes fully deterministic after move 1.
+        root.add_dirichlet_noise(root.action_idxes, root.child_priors)
 
     while reads_done < num_reads:
         this_batch = min(batch_size, num_reads - reads_done)
